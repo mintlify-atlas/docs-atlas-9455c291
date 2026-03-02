@@ -1,0 +1,111 @@
+---
+title: "Development Overview"
+description: "Overview of the Syft-Flwr development environment and workflow"
+---
+
+This guide covers the development workflow for contributing to Syft-Flwr, from setting up your environment to releasing new versions.
+
+## Prerequisites
+
+Before you begin, ensure you have the following installed:
+
+- **Python**: 3.12 or higher (< 3.14)
+- **uv**: Fast Python package manager ([install instructions](https://docs.astral.sh/uv/getting-started/installation/))
+- **just**: Command runner (optional, but recommended) - `brew install just` or `cargo install just`
+
+## Project Structure
+
+The Syft-Flwr repository is organized as follows:
+
+```
+syft-flwr/
+├── src/syft_flwr/          # Main package source
+├── tests/
+│   ├── unit/               # Unit tests (run in CI)
+│   └── integration/
+│       ├── simulation/     # Simulation tests
+│       └── syft-client/    # Google Drive integration tests
+├── notebooks/              # Example notebooks
+├── credentials/            # OAuth credentials (gitignored)
+├── scripts/
+│   └── test.sh            # Test runner script
+└── .github/workflows/      # CI/CD workflows
+```
+
+## Development Workflow
+
+The typical development workflow follows these steps:
+
+<Steps>
+  <Step title="Clone and Setup">
+    Clone the repository and set up your development environment. See [Development Setup](/development/setup) for detailed instructions.
+  </Step>
+  
+  <Step title="Feature Development">
+    Create a feature branch and implement your changes. Follow the code quality guidelines and ensure all pre-commit hooks pass.
+  </Step>
+  
+  <Step title="Testing">
+    Run unit tests and integration tests to verify your changes. See [Testing](/development/testing) for test commands.
+  </Step>
+  
+  <Step title="Code Quality">
+    Run linters, formatters, and pre-commit hooks to ensure code quality. See [Code Quality](/development/code-quality) for details.
+  </Step>
+  
+  <Step title="Merge to Main">
+    Once your feature is complete and all tests pass, merge to the main branch.
+  </Step>
+  
+  <Step title="Release">
+    When ready to publish a new version, follow the [Release Process](/development/releasing) to bump the version and publish to PyPI.
+  </Step>
+</Steps>
+
+## Available Commands
+
+The project uses `just` as a command runner. To see all available commands:
+
+```bash
+just
+```
+
+Common commands include:
+
+```bash
+# Testing
+just test-unit              # Run unit tests only
+just test-integration       # Run integration tests
+just test                   # Run all tests
+
+# Building
+just build                  # Build wheel package
+just show-version           # Show current version
+
+# Version Management
+just bump patch             # Bump patch version
+just bump minor             # Bump minor version
+just bump major             # Bump major version
+
+# Utilities
+just clean                  # Clean up generated files
+```
+
+See the individual documentation pages for detailed information on each aspect of development.
+
+## CI/CD
+
+The project uses GitHub Actions for continuous integration and deployment:
+
+- **Unit Tests**: Run automatically on push/PR to main branch across Ubuntu, Windows, and macOS with Python 3.10, 3.11, and 3.12
+- **Integration Tests**: Can be triggered manually via GitHub Actions
+- **Release Workflow**: Fully automated release process including version bumping, testing, building, and publishing to PyPI
+
+## Getting Help
+
+If you encounter issues during development:
+
+- Check the [Development Setup](/development/setup) guide for installation issues
+- Review [Testing](/development/testing) for test-related problems
+- Consult [Code Quality](/development/code-quality) for linting and formatting issues
+- See [Releasing](/development/releasing) for release process troubleshooting

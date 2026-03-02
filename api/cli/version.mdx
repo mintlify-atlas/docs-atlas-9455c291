@@ -1,0 +1,264 @@
+---
+title: syft-flwr version
+description: Display the installed syft-flwr version
+---
+
+## Synopsis
+
+```bash
+syft-flwr version
+```
+
+## Description
+
+The `version` command prints the currently installed version of syft-flwr to standard output.
+
+This command is useful for:
+
+- Verifying your installation
+- Checking if updates are available
+- Reporting version information in bug reports
+- Ensuring compatibility with project requirements
+
+## Arguments
+
+None.
+
+## Options
+
+<ParamField path="--help" type="flag">
+  Display help information for the version command.
+  
+  **Aliases:** `-h`
+</ParamField>
+
+## Examples
+
+### Check Installed Version
+
+```bash
+syft-flwr version
+```
+
+**Output:**
+```
+0.5.0
+```
+
+### Use in Scripts
+
+```bash
+VERSION=$(syft-flwr version)
+echo "Running syft-flwr version $VERSION"
+```
+
+**Output:**
+```
+Running syft-flwr version 0.5.0
+```
+
+### Check Version in Requirements
+
+```bash
+if [ "$(syft-flwr version)" = "0.5.0" ]; then
+  echo "Correct version installed"
+else
+  echo "Please install syft-flwr 0.5.0"
+fi
+```
+
+### Compare with PyPI
+
+```bash
+CURRENT=$(syft-flwr version)
+LATEST=$(pip index versions syft-flwr | grep syft-flwr | head -1 | awk '{print $2}' | tr -d '()')
+
+if [ "$CURRENT" = "$LATEST" ]; then
+  echo "You have the latest version ($CURRENT)"
+else
+  echo "Update available: $CURRENT → $LATEST"
+fi
+```
+
+## Version Format
+
+Versions follow [Semantic Versioning](https://semver.org/) (SemVer):
+
+```
+MAJOR.MINOR.PATCH
+```
+
+Where:
+- **MAJOR**: Incompatible API changes
+- **MINOR**: Backwards-compatible functionality additions
+- **PATCH**: Backwards-compatible bug fixes
+
+### Current Version
+
+**0.5.0**
+
+- **Major**: 0 (pre-1.0, API may change)
+- **Minor**: 5
+- **Patch**: 0
+
+## Programmatic Access
+
+You can also check the version from Python:
+
+```python
+import syft_flwr
+
+print(syft_flwr.__version__)
+# Output: 0.5.0
+```
+
+This is defined in `src/syft_flwr/__init__.py:1`
+
+## Version History
+
+For a complete version history and changelog, see:
+
+- [GitHub Releases](https://github.com/OpenMined/syft-flwr/releases)
+- [PyPI Release History](https://pypi.org/project/syft-flwr/#history)
+
+## Updating
+
+To update to the latest version:
+
+```bash
+pip install --upgrade syft-flwr
+```
+
+To install a specific version:
+
+```bash
+pip install syft-flwr==0.5.0
+```
+
+To install from the main branch (latest development version):
+
+```bash
+pip install "git+https://github.com/OpenMined/syft-flwr.git@main"
+```
+
+## Exit Codes
+
+- `0`: Always succeeds
+
+## Output Format
+
+The version is printed as plain text with no additional formatting:
+
+- No prefix (e.g., no "v" before the number)
+- No color codes
+- Single line with newline
+- Suitable for parsing in scripts
+
+## Integration Examples
+
+### Makefile
+
+```makefile
+.PHONY: check-version
+check-version:
+	@echo "Installed version: $(shell syft-flwr version)"
+	@echo "Required version: 0.5.0"
+```
+
+### GitHub Actions
+
+```yaml
+name: Check Version
+on: [push]
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install syft-flwr
+        run: pip install syft-flwr
+      - name: Check version
+        run: |
+          VERSION=$(syft-flwr version)
+          echo "Installed version: $VERSION"
+```
+
+### Docker
+
+```dockerfile
+FROM python:3.10
+
+RUN pip install syft-flwr==0.5.0
+
+# Verify installation
+RUN syft-flwr version
+
+CMD ["syft-flwr", "--help"]
+```
+
+### CI/CD Pipeline
+
+```bash
+#!/bin/bash
+# Verify correct version is installed
+
+EXPECTED="0.5.0"
+ACTUAL=$(syft-flwr version)
+
+if [ "$ACTUAL" != "$EXPECTED" ]; then
+  echo "Error: Expected version $EXPECTED, got $ACTUAL"
+  exit 1
+fi
+
+echo "✓ Version check passed: $ACTUAL"
+```
+
+## Troubleshooting
+
+### Command Not Found
+
+```bash
+$ syft-flwr version
+bash: syft-flwr: command not found
+```
+
+**Solution:** Install syft-flwr:
+```bash
+pip install syft-flwr
+```
+
+### Multiple Versions Installed
+
+If you have multiple Python environments:
+
+```bash
+# Check which syft-flwr is being used
+which syft-flwr
+
+# Check all installed versions
+pip list | grep syft-flwr
+
+# Use specific Python environment
+python3 -m syft_flwr version
+```
+
+### Version Mismatch
+
+If the version doesn't match expectations:
+
+```bash
+# Uninstall all versions
+pip uninstall syft-flwr -y
+
+# Install specific version
+pip install syft-flwr==0.5.0
+
+# Verify
+syft-flwr version
+```
+
+## See Also
+
+- [CLI Overview](/api/cli/overview) - Complete CLI reference
+- [Installation Guide](/getting-started/installation) - Installation instructions

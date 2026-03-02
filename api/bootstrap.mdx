@@ -1,0 +1,113 @@
+---
+title: "bootstrap"
+description: "Bootstrap a new Syft-Flwr project from a Flower project directory"
+---
+
+## Overview
+
+The `bootstrap` function prepares a Flower project for use with Syft-Flwr by configuring the project metadata and creating the necessary runtime files.
+
+## Function Signature
+
+```python
+def bootstrap(
+    flwr_project_dir: Union[str, Path],
+    aggregator: str,
+    datasites: List[str],
+    transport: Optional[str] = None,
+) -> None
+```
+
+## Parameters
+
+<ParamField path="flwr_project_dir" type="Union[str, Path]" required>
+  Path to the Flower project directory. Must contain a `pyproject.toml` file and not already have a `main.py` file.
+</ParamField>
+
+<ParamField path="aggregator" type="str" required>
+  Email of the aggregator (Data Scientist). Must be a valid datasite email address.
+</ParamField>
+
+<ParamField path="datasites" type="List[str]" required>
+  List of datasite emails (Data Owners). Each email must be a valid datasite address.
+</ParamField>
+
+<ParamField path="transport" type="Optional[str]" default="None">
+  Communication transport to use at runtime:
+  - `"syftbox"`: Local SyftBox with RPC/crypto (default for non-Colab environments)
+  - `"p2p"`: P2P sync via Google Drive/OneDrive (default for Colab environments)
+  - `None`: Auto-detect based on environment
+</ParamField>
+
+## Returns
+
+`None` - The function modifies the project directory in place.
+
+## What It Does
+
+1. **Validates the project directory** - Ensures `pyproject.toml` exists and `main.py` doesn't
+2. **Updates `pyproject.toml`** with:
+   - Unique app name: `{aggregator}_{base_app_name}_{timestamp}`
+   - Datasites and aggregator configuration
+   - Transport type configuration
+   - Adds `syft_flwr` as a dependency
+3. **Creates `main.py`** - Generates the runtime entrypoint that determines who runs what based on metadata
+
+## Usage Example
+
+From `notebooks/fl-diabetes-prediction/local/ds.ipynb:252-260`:
+
+```python
+import syft_flwr
+from pathlib import Path
+
+SYFT_FLWR_PROJECT_PATH = Path("../fl-diabetes-prediction")
+DS = "ds@openmined.org"
+DO1 = "do1@openmined.org"
+DO2 = "do2@openmined.org"
+
+# Bootstrap the project
+syft_flwr.bootstrap(
+    SYFT_FLWR_PROJECT_PATH,
+    aggregator=DS,
+    datasites=[DO1, DO2]
+)
+print("Bootstrapped project successfully ✅")
+```
+
+## Modified Configuration
+
+After bootstrapping, the `pyproject.toml` will include:
+
+```toml
+[tool.syft_flwr]
+app_name = "ds@openmined.org_fl-diabetes-prediction_1753435643"
+datasites = [
+    "do1@openmined.org",
+    "do2@openmined.org",
+]
+aggregator = "ds@openmined.org"
+transport = "syftbox"
+```
+
+## Exceptions
+
+<ResponseField name="FileExistsError">
+  Raised if `main.py` already exists in the project directory.
+</ResponseField>
+
+<ResponseField name="FileNotFoundError">
+  Raised if the project directory or `pyproject.toml` doesn't exist.
+</ResponseField>
+
+<ResponseField name="ValueError">
+  Raised if:
+  - Invalid transport type (not `"syftbox"` or `"p2p"`)
+  - Invalid datasite email format for aggregator or any datasite
+</ResponseField>
+
+## Notes
+
+- The function auto-detects Google Colab environments and defaults to `"p2p"` transport
+- A unique app name is generated using the current timestamp to avoid conflicts
+- The bootstrapped project maintains the same structure as a standard Flower project

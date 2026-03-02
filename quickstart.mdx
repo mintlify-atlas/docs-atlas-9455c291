@@ -1,80 +1,379 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Train a federated diabetes prediction model in Google Colab with zero local setup
 ---
 
-## Get started in three steps
+## Overview
 
-Get your documentation site running locally and make your first customization.
+This quickstart shows you how to run a complete federated learning workflow directly from Google Colab—no local setup required. You'll train a diabetes prediction model across two data owners using the PIMA Indians Diabetes dataset, all while keeping private data secure.
 
-### Step 1: Set up your local environment
+<Note>
+  You can complete this tutorial with three Google accounts (one for each party), or invite two friends for a real collaborative experience.
+</Note>
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+## What you'll build
+
+A federated learning system with three participants:
+
+- **Data Owner 1 (DO1)** - Holds partition 0 of the diabetes dataset
+- **Data Owner 2 (DO2)** - Holds partition 1 of the diabetes dataset  
+- **Data Scientist (DS)** - Coordinates training and aggregates model updates
+
+Raw data never leaves each data owner's Colab environment—only model updates are shared.
+
+## Prerequisites
+
+- Three Google accounts (or two friends with Google accounts)
+- Access to Google Colab
+- 15-20 minutes
+
+That's it! No Python installation, no complex setup.
+
+## Step 1: Set up data owners
+
+### Data Owner 1 setup
+
+Open a new Colab notebook and run:
+
+```python
+# Install syft-flwr
+!uv pip install -q "git+https://github.com/OpenMined/syft-flwr.git@main"
+
+# Login as Data Owner 1
+import syft_client as sc
+import syft_flwr
+
+do_email = input("Enter Data Owner 1's email: ")
+do_client = sc.login_do(email=do_email)
+```
+
+### Register the dataset
+
+```python
+from pathlib import Path
+from huggingface_hub import snapshot_download
+
+# Download dataset from HuggingFace
+DATASET_DIR = Path("./dataset/").expanduser().absolute()
+
+if not DATASET_DIR.exists():
+    snapshot_download(
+        repo_id="khoaguin/pima-indians-diabetes-database-partitions",
+        repo_type="dataset",
+        local_dir=DATASET_DIR,
+    )
+
+# Create Syft dataset with mock and private paths
+partition_number = 0  # DO1 uses partition 0
+DATASET_PATH = DATASET_DIR / f"pima-indians-diabetes-database-{partition_number}"
+
+do_client.create_dataset(
+    name="pima-indians-diabetes-database",
+    mock_path=DATASET_PATH / "mock",
+    private_path=DATASET_PATH / "private",
+    summary="PIMA Indians Diabetes dataset - Partition 0",
+    readme_path=DATASET_PATH / "README.md",
+    tags=["healthcare", "diabetes"],
+    sync=True,
+)
+
+# Verify dataset creation
+do_client.datasets.get_all()
+```
+
+<Tip>
+  The `mock_path` contains synthetic/sample data for code development. The `private_path` contains real data that never leaves this environment.
+</Tip>
+
+### Data Owner 2 setup
+
+Repeat the same steps in a **new Colab notebook**, but change the partition number:
+
+```python
+partition_number = 1  # DO2 uses partition 1
+```
+
+Everything else stays identical. Now you have two data owners, each holding a different slice of the dataset.
+
+## Step 2: Set up data scientist
+
+In a **third Colab notebook**, set up the Data Scientist role.
+
+### Login and add peers
+
+```python
+!uv pip install -q "git+https://github.com/OpenMined/syft-flwr.git@main"
+
+import syft_client as sc
+import syft_flwr
+
+ds_email = input("Enter Data Scientist's email: ")
+ds_client = sc.login_ds(email=ds_email)
+
+# Add both data owners as peers
+do1_email = input("Enter Data Owner 1's email: ")
+ds_client.add_peer(do1_email)
+
+do2_email = input("Enter Data Owner 2's email: ")
+ds_client.add_peer(do2_email)
+
+# Verify peers were added
+ds_client.peers
+```
+
+### Explore available datasets
+
+```python
+# Check DO1's datasets
+do1_datasets = ds_client.datasets.get_all(datasite=do1_email)
+do1_datasets[0].describe()
+
+# Check DO2's datasets
+do2_datasets = ds_client.datasets.get_all(datasite=do2_email)
+do2_datasets[0].describe()
+
+# Get mock dataset URLs for testing
+mock_dataset_urls = [do1_datasets[0].mock_url, do2_datasets[0].mock_url]
+mock_dataset_urls
+```
+
+## Step 3: Prepare the FL project
+
+### Clone the Flower project
+
+The FL project is built using [Flower](https://flower.ai/), defining model architecture, training logic, and communication. Syft-Flwr handles job submission and governance on top.
+
+```python
+from pathlib import Path
+
+!mkdir -p /content/fl-diabetes-prediction
+!curl -sL https://github.com/khoaguin/fl-diabetes-prediction/archive/refs/heads/main.tar.gz | tar -xz --strip-components=1 -C /content/fl-diabetes-prediction
+
+SYFT_FLWR_PROJECT_PATH = Path("/content/fl-diabetes-prediction")
+print(f"Project at: {SYFT_FLWR_PROJECT_PATH}")
+```
+
+### Bootstrap the project
+
+Configure the project with participating datasites and generate the `main.py` entry point:
+
+```python
+import syft_flwr
+
+!rm -rf {SYFT_FLWR_PROJECT_PATH / "main.py"}
+
+do_emails = [peer.email for peer in ds_client.peers]
+syft_flwr.bootstrap(
+    SYFT_FLWR_PROJECT_PATH,
+    aggregator=ds_email,
+    datasites=do_emails
+)
+print("Bootstrapped project successfully!")
+```
+
+<Note>
+  `bootstrap()` auto-detects the transport layer. In Colab it uses P2P (Google Drive), locally it uses SyftBox.
+</Note>
+
+### Submit jobs to data owners
+
+```python
+!rm -rf {SYFT_FLWR_PROJECT_PATH / "fl_diabetes_prediction" / "__pycache__"}
+
+job_name = "fl-diabetes-training"
+
+# Submit to DO1
+ds_client.submit_python_job(
+    user=do1_email,
+    code_path=str(SYFT_FLWR_PROJECT_PATH),
+    job_name=job_name,
+)
+
+# Submit to DO2
+ds_client.submit_python_job(
+    user=do2_email,
+    code_path=str(SYFT_FLWR_PROJECT_PATH),
+    job_name=job_name,
+)
+
+# Verify job submission
+ds_client.jobs
+```
+
+## Step 4: Data owners approve and run jobs
+
+Back in **each Data Owner's notebook** (DO1 and DO2):
+
+```python
+# Check for incoming jobs
+do_client.jobs
+
+# Review and approve the job
+do_client.jobs[0].approve()
+
+# Process approved jobs (runs client-side training)
+do_client.process_approved_jobs()
+
+# Check job status
+do_client.jobs
+```
+
+<Tip>
+  Data owners can inspect the submitted code before approving. This is a critical governance feature.
+</Tip>
+
+## Step 5: Run federated training
+
+Back in the **Data Scientist notebook**, install dependencies and run the aggregator:
+
+```python
+# Install Flower and ML dependencies
+!uv pip install \
+    "flwr-datasets>=0.5.0" \
+    "imblearn>=0.0" \
+    "loguru>=0.7.3" \
+    "pandas>=2.3.0" \
+    "ipywidgets>=8.1.7" \
+    "scikit-learn==1.7.1" \
+    "torch>=2.8.0" \
+    "ray==2.31.0"
+```
+
+```python
+# Start the aggregation server
+ds_email = ds_client.email
+syftbox_folder = f"/content/SyftBox_{ds_email}"
+
+!SYFTBOX_EMAIL="{ds_email}" SYFTBOX_FOLDER="{syftbox_folder}" \
+    uv run {str(SYFT_FLWR_PROJECT_PATH / "main.py")}
+
+# Check final job status
+ds_client.jobs
+```
+
+The aggregator coordinates training rounds, receiving model updates from each data owner and combining them using Federated Averaging (FedAvg).
+
+## Step 6: Clean up
+
+When you're done, clean up resources in each notebook:
+
+<CodeGroup>
+
+```python Data Scientist
+ds_client.delete_syftbox()
+```
+
+```python Data Owner 1
+do_client.delete_syftbox()
+```
+
+```python Data Owner 2  
+do_client.delete_syftbox()
+```
+
+</CodeGroup>
+
+## What just happened?
+
+You successfully trained a diabetes prediction model using federated learning:
+
+1. Two data owners each held a private partition of the dataset
+2. A data scientist coordinated training without seeing raw data
+3. Model updates were aggregated using the Flower framework  
+4. Privacy was preserved—raw data never left the data owner's environment
+
+This is the core promise of federated learning: collaborative machine learning without sharing sensitive data.
+
+## Understanding the code
+
+The Flower project follows a standard structure:
+
+### Client app
+
+```python src/syft_flwr/fl_diabetes_prediction/client_app.py
+from flwr.client import ClientApp, NumPyClient
+from flwr.common import Context
+
+class FlowerClient(NumPyClient):
+    def __init__(self, net, trainloader, testloader):
+        self.net = net
+        self.trainloader = trainloader
+        self.testloader = testloader
+
+    def fit(self, parameters, config):
+        set_weights(self.net, parameters)
+        train(self.net, self.trainloader)
+        return get_weights(self.net), len(self.trainloader), {}
+
+    def evaluate(self, parameters, config):
+        set_weights(self.net, parameters)
+        loss, accuracy = evaluate(self.net, self.testloader)
+        return loss, len(self.testloader), {"accuracy": accuracy}
+
+app = ClientApp(client_fn=client_fn)
+```
+
+### Server app
+
+```python src/syft_flwr/fl_diabetes_prediction/server_app.py
+from flwr.server import ServerApp, ServerConfig
+from syft_flwr.strategy import FedAvgWithModelSaving
+
+def server_fn(context: Context):
+    strategy = FedAvgWithModelSaving(
+        save_path=output_dir / "weights",
+        fraction_fit=1.0,
+        min_available_clients=1,
+        initial_parameters=params,
+        evaluate_metrics_aggregation_fn=weighted_average,
+    )
     
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+    config = ServerConfig(num_rounds=5)
+    return ServerAppComponents(config=config, strategy=strategy)
 
-### Step 2: Deploy your changes
+app = ServerApp(server_fn=server_fn)
+```
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+Syft-Flwr automatically handles:
+- Loading datasets from private paths via `load_syftbox_dataset()`
+- Routing model updates through file sync
+- Managing job approval workflows
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
-
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card
+    title="Installation"
+    icon="download"
+    href="/installation"
+  >
+    Set up Syft-Flwr for local development
+  </Card>
+  <Card
+    title="Development guide"
+    icon="code"
+    href="/development/overview"
+  >
+    Learn how to build custom FL projects
+  </Card>
+  <Card
+    title="API reference"
+    icon="book"
+    href="/api/bootstrap"
+  >
+    Explore the complete API
+  </Card>
+  <Card
+    title="Examples"
+    icon="flask"
+    href="/examples/overview"
+  >
+    Explore more FL examples
+  </Card>
 </CardGroup>
 
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
+## Get help
+
+- Join [Slack](https://slack.openmined.org/) - #support-syftbox channel
+- Report issues on [GitHub](https://github.com/OpenMined/syft-flwr/issues)
+- Apply to the [Co-Design Program](https://openmined.org/federated-learning/co-design/) for production support

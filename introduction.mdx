@@ -1,0 +1,178 @@
+---
+title: Introduction to Syft-Flwr
+description: File-based federated learning framework combining Flower's FL capabilities with zero infrastructure setup
+---
+
+<img
+  className="block dark:hidden"
+  src="/images/hero-light.svg"
+  alt="Syft-Flwr Hero Light"
+/>
+<img
+  className="hidden dark:block"
+  src="/images/hero-dark.svg"
+  alt="Syft-Flwr Hero Dark"
+/>
+
+## What is Syft-Flwr?
+
+Syft-Flwr is an open-source framework that combines [Flower's](https://github.com/adap/flower) federated learning capabilities with file-based communication. Train machine learning models collaboratively across distributed datasets without centralizing data—with easy setup, offline capability, and no servers required.
+
+## Why Syft-Flwr?
+
+Traditional federated learning frameworks require complex network infrastructure and continuous connectivity. Syft-Flwr takes a different approach: **communication happens via file sync** (Google Drive or [SyftBox](https://syftbox.net/)), enabling federated learning workflows that work offline, require no servers, and can run entirely in Google Colab notebooks.
+
+<CardGroup cols={2}>
+  <Card
+    title="File-based communication"
+    icon="folder"
+  >
+    Train models without direct network connections—communication happens via file sync (Google Drive or SyftBox)
+  </Card>
+  <Card
+    title="Zero infrastructure"
+    icon="server"
+  >
+    No servers to maintain, no complex networking setup—just notebooks and file sync
+  </Card>
+  <Card
+    title="Offline capable"
+    icon="wifi-slash"
+  >
+    Asynchronous message passing enables training even with intermittent connectivity
+  </Card>
+  <Card
+    title="Privacy by design"
+    icon="shield-check"
+  >
+    Data never leaves its source—only model updates are shared
+  </Card>
+</CardGroup>
+
+## How it works
+
+Syft-Flwr orchestrates federated learning through three key roles:
+
+1. **Data Owners (DO)** - Organizations that hold private data and approve training jobs
+2. **Data Scientist (DS)** - Coordinator who proposes ML projects and aggregates results  
+3. **Flower Framework** - Handles model aggregation using FedAvg or custom strategies
+
+The workflow is simple:
+
+<Steps>
+  <Step title="Data owners register datasets">
+    Each data owner creates a dataset with mock (public) and private paths. Mock data lets data scientists develop code, while private data stays secure.
+  </Step>
+  
+  <Step title="Data scientist proposes project">
+    The DS creates a Flower project defining model architecture and training logic, then bootstraps it with `syft_flwr.bootstrap()` to configure participants.
+  </Step>
+  
+  <Step title="Jobs submitted for approval">
+    The DS submits training jobs to each data owner. DOs inspect the code before approving execution on their private data.
+  </Step>
+  
+  <Step title="Federated training runs">
+    Data owners run `process_approved_jobs()` to train locally. The DS runs the aggregator to coordinate rounds and combine model updates.
+  </Step>
+</Steps>
+
+## Built on Flower
+
+Syft-Flwr is built on [Flower](https://flower.ai/), a robust federated learning framework. This means you get:
+
+- **Standard Flower APIs** - Use familiar `ClientApp` and `ServerApp` patterns
+- **FedAvg support** - Built-in federated averaging with model saving
+- **Custom strategies** - Implement your own aggregation strategies
+- **All Flower features** - Simulation mode, metrics aggregation, and more
+
+Syft-Flwr adds the governance and communication layer on top, handling secure job submission and file-based transport.
+
+## Key features
+
+### Transport flexibility
+
+Choose the transport that fits your environment:
+
+- **SyftBox** - Local file sync with RPC/crypto (default for local development)
+- **P2P** - Google Drive or OneDrive sync (perfect for Colab notebooks)
+
+### Data governance
+
+Data owners maintain complete control:
+
+- Review training code before execution
+- Approve or reject jobs individually  
+- Data never leaves the local environment
+- Mock datasets for safe code development
+
+### Developer friendly
+
+Built for real-world workflows:
+
+- Run complete FL workflows in Google Colab (no local setup)
+- Standard Flower project structure
+- Python 3.12+ support
+- Comprehensive logging and debugging
+
+## Use cases
+
+Syft-Flwr is perfect for:
+
+<CardGroup cols={2}>
+  <Card title="Healthcare research" icon="heart-pulse">
+    Train diagnostic models across hospitals without sharing patient data
+  </Card>
+  <Card title="Financial analytics" icon="chart-line">
+    Build fraud detection models across institutions while maintaining data privacy
+  </Card>
+  <Card title="Edge AI" icon="microchip">
+    Train models across IoT devices with intermittent connectivity
+  </Card>
+  <Card title="Research collaboration" icon="flask">
+    Enable academic collaboration on sensitive datasets
+  </Card>
+</CardGroup>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Quickstart"
+    icon="rocket"
+    href="/quickstart"
+  >
+    Get a federated learning model running in 5 minutes
+  </Card>
+  <Card
+    title="Installation"
+    icon="download"
+    href="/installation"
+  >
+    Install Syft-Flwr and set up your development environment
+  </Card>
+  <Card
+    title="API Reference"
+    icon="code"
+    href="/api/bootstrap"
+  >
+    Explore the complete API documentation
+  </Card>
+  <Card
+    title="Examples"
+    icon="book-open"
+    href="/examples/overview"
+  >
+    Learn from real-world federated learning examples
+  </Card>
+</CardGroup>
+
+## Community
+
+Join the OpenMined community:
+
+- [Slack](https://slack.openmined.org/) - Join #support-syftbox for questions
+- [GitHub](https://github.com/OpenMined/syft-flwr) - Report bugs or contribute
+- [Co-Design Program](https://openmined.org/federated-learning/co-design/) - Get direct support for production use cases
+
+Ready to start? Head to the [quickstart guide](/quickstart) to train your first federated model.

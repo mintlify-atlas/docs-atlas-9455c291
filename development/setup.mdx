@@ -1,0 +1,245 @@
+---
+title: "Development Setup"
+description: "Set up your local development environment for Syft-Flwr"
+---
+
+This guide walks you through setting up a development environment for Syft-Flwr.
+
+## Prerequisites
+
+Ensure you have the following installed:
+
+- **Python**: 3.12 or higher (< 3.14)
+- **uv**: Fast Python package manager ([install instructions](https://docs.astral.sh/uv/getting-started/installation/))
+- **just**: Command runner (optional, but recommended)
+
+### Installing just
+
+<CodeGroup>
+```bash macOS (Homebrew)
+brew install just
+```
+
+```bash Cargo
+cargo install just
+```
+
+```bash Linux (apt)
+sudo apt install just
+```
+</CodeGroup>
+
+## Installation
+
+<Steps>
+  <Step title="Clone the repository">
+    Clone the Syft-Flwr repository from GitHub:
+    
+    ```bash
+    git clone https://github.com/OpenMined/syft-flwr.git
+    cd syft-flwr
+    ```
+  </Step>
+  
+  <Step title="Create virtual environment">
+    Create and activate a Python virtual environment using uv:
+    
+    <CodeGroup>
+    ```bash macOS/Linux
+    uv venv .venv
+    source .venv/bin/activate
+    ```
+    
+    ```bash Windows
+    uv venv .venv
+    .venv\Scripts\activate
+    ```
+    </CodeGroup>
+  </Step>
+  
+  <Step title="Install dependencies">
+    Install the package in editable mode with development dependencies:
+    
+    ```bash
+    uv pip install -e .
+    uv sync --group dev
+    ```
+    
+    This installs:
+    - The `syft-flwr` package in editable mode
+    - All development dependencies including pytest, pre-commit, jupyter, and more
+  </Step>
+  
+  <Step title="Install pre-commit hooks (optional)">
+    Set up pre-commit hooks to automatically check code quality:
+    
+    ```bash
+    uv run pre-commit install
+    ```
+    
+    This will run checks automatically before each commit.
+  </Step>
+</Steps>
+
+## Verify Installation
+
+Verify your setup is working correctly:
+
+```bash
+# Check Python version
+python --version
+
+# Check syft-flwr is importable
+python -c "import syft_flwr; print(syft_flwr.__version__)"
+
+# List available just commands
+just
+
+# Run a quick test
+just test-unit
+```
+
+## Development Dependencies
+
+The development environment includes the following tools:
+
+<AccordionGroup>
+  <Accordion title="Testing">
+    - **pytest**: Testing framework
+    - **pytest-cov**: Code coverage reporting
+    - **pytest-xdist**: Parallel test execution
+    - **pytest-asyncio**: Async test support
+  </Accordion>
+  
+  <Accordion title="Code Quality">
+    - **ruff**: Fast Python linter and formatter
+    - **pre-commit**: Git hook framework for automated checks
+  </Accordion>
+  
+  <Accordion title="Development Tools">
+    - **ipykernel**: Jupyter kernel support
+    - **ipywidgets**: Interactive widgets for notebooks
+    - **jupyterlab**: Interactive development environment
+    - **python-dotenv**: Environment variable management
+  </Accordion>
+  
+  <Accordion title="Build & Release">
+    - **commitizen**: Conventional commits and version bumping
+    - **torch**: PyTorch for ML model training
+    - **imblearn**: Imbalanced learning utilities
+  </Accordion>
+</AccordionGroup>
+
+## Google OAuth Setup (for Integration Tests)
+
+Integration tests use Google Drive as the transport layer and require OAuth credentials. This setup is **optional** and only needed if you plan to run integration tests locally.
+
+<Steps>
+  <Step title="Create Google Cloud Project">
+    1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+    2. Create a new project (or select existing one)
+    3. Note your project name for later
+  </Step>
+  
+  <Step title="Enable Google Drive API">
+    1. Go to "APIs & Services" → "Library"
+    2. Search for "Google Drive API"
+    3. Click "Enable"
+  </Step>
+  
+  <Step title="Configure OAuth Consent Screen">
+    1. Go to "APIs & Services" → "OAuth consent screen"
+    2. Choose **"External"** (or "Internal" if using Google Workspace)
+    3. Fill in required fields:
+       - App name (e.g., "SyftBox Integration Tests")
+       - User support email
+       - Developer contact email
+    4. Add scopes: `https://www.googleapis.com/auth/drive`
+    5. Add your test user emails (DO1, DO2, DS emails)
+    6. Save
+  </Step>
+  
+  <Step title="Publish OAuth App">
+    To make tokens persistent (not expire after 7 days):
+    
+    1. Go to "APIs & Services" → "OAuth consent screen" → "Audience"
+    2. Click **"PUBLISH APP"**
+    3. Confirm the prompt
+    
+    <Note>
+    While in "Testing" mode, OAuth tokens expire after **7 days**. Publishing prevents this expiration.
+    </Note>
+  </Step>
+  
+  <Step title="Create OAuth Credentials">
+    Create credentials for each participant (DO1, DO2, DS):
+    
+    1. Go to "APIs & Services" → "Credentials"
+    2. Click "Create Credentials" → "OAuth client ID"
+    3. Application type: **Desktop app**
+    4. Name it (e.g., "DO1 Client", "DO2 Client", "DS Client")
+    5. Click "Create"
+    6. Download the JSON file
+    7. Save as `do1.json`, `do2.json`, or `ds.json` in `credentials/`
+  </Step>
+  
+  <Step title="Create environment file">
+    Create `credentials/.env` with the following content:
+    
+    ```bash credentials/.env
+    # Data Owner 1
+    SYFT_EMAIL_DO1="do1@gmail.com"
+    SYFT_CRED_FNAME_DO1="do1.json"
+    SYFT_TOKEN_FNAME_DO1="token_do1.json"
+    
+    # Data Owner 2
+    SYFT_EMAIL_DO2="do2@gmail.com"
+    SYFT_CRED_FNAME_DO2="do2.json"
+    SYFT_TOKEN_FNAME_DO2="token_do2.json"
+    
+    # Data Scientist
+    SYFT_EMAIL_DS="ds@gmail.com"
+    SYFT_CRED_FNAME_DS="ds.json"
+    SYFT_TOKEN_FNAME_DS="token_ds.json"
+    ```
+  </Step>
+  
+  <Step title="Generate tokens">
+    Token files are generated automatically when you first run the integration tests:
+    
+    ```bash
+    just test-integration-gdrive
+    ```
+    
+    A browser window will open for each user to authenticate. Complete the OAuth flow for each account, and tokens will be saved to `credentials/token_*.json`.
+  </Step>
+</Steps>
+
+### Required Files Structure
+
+```
+credentials/
+├── do1.json              # Data Owner 1 OAuth credentials
+├── do2.json              # Data Owner 2 OAuth credentials
+├── ds.json               # Data Scientist OAuth credentials
+├── token_do1.json        # Auto-generated on first run
+├── token_do2.json        # Auto-generated on first run
+├── token_ds.json         # Auto-generated on first run
+└── .env                  # Environment variables
+```
+
+### Security Notes
+
+<Warning>
+- **Never commit** credential files or tokens to git (they're in `.gitignore`)
+- Credentials are scoped to Google Drive only
+- Tokens can be revoked at https://myaccount.google.com/permissions
+</Warning>
+
+## Next Steps
+
+Now that your environment is set up:
+
+- Learn about [Testing](/development/testing) to run unit and integration tests
+- Review [Code Quality](/development/code-quality) guidelines
+- Understand the [Release Process](/development/releasing)

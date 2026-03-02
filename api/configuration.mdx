@@ -1,0 +1,214 @@
+---
+title: "Configuration"
+description: "Configuration utilities for loading and managing Syft-Flwr projects"
+---
+
+## Overview
+
+The configuration module provides utilities for reading and writing TOML configuration files, particularly for managing Flower and Syft-Flwr project metadata.
+
+## Functions
+
+### load_flwr_pyproject
+
+Load and validate a Flower project's `pyproject.toml` file.
+
+```python
+def load_flwr_pyproject(
+    path: Path,
+    check_module: bool = True
+) -> dict
+```
+
+#### Parameters
+
+<ParamField path="path" type="Path" required>
+  Path to the project directory or `pyproject.toml` file. If a directory is provided, it will automatically look for `pyproject.toml` inside.
+</ParamField>
+
+<ParamField path="check_module" type="bool" default="True">
+  Whether to validate that the module references in the configuration exist. Set to `False` to skip module validation (useful during testing or parallel execution).
+</ParamField>
+
+#### Returns
+
+<ResponseField name="pyproject" type="dict">
+  Parsed and validated pyproject.toml configuration as a dictionary.
+</ResponseField>
+
+#### Usage Example
+
+From `run.py:22-25`:
+
+```python
+from syft_flwr.config import load_flwr_pyproject
+from pathlib import Path
+
+flower_project_dir = Path("./fl-diabetes-prediction")
+pyproject_conf = load_flwr_pyproject(flower_project_dir)
+
+# Access configuration values
+client_ref = pyproject_conf["tool"]["flwr"]["app"]["components"]["clientapp"]
+server_ref = pyproject_conf["tool"]["flwr"]["app"]["components"]["serverapp"]
+app_name = pyproject_conf["tool"]["syft_flwr"]["app_name"]
+datasites = pyproject_conf["tool"]["syft_flwr"]["datasites"]
+aggregator = pyproject_conf["tool"]["syft_flwr"]["aggregator"]
+```
+
+#### Exceptions
+
+<ResponseField name="Exception">
+  Raised if the configuration is invalid or module references cannot be found (when `check_module=True`).
+</ResponseField>
+
+---
+
+### load_toml
+
+Load any TOML file into a dictionary.
+
+```python
+def load_toml(path: str) -> dict
+```
+
+#### Parameters
+
+<ParamField path="path" type="str" required>
+  Path to the TOML file to load.
+</ParamField>
+
+#### Returns
+
+<ResponseField name="config" type="dict">
+  Parsed TOML file as a dictionary.
+</ResponseField>
+
+#### Usage Example
+
+```python
+from syft_flwr.config import load_toml
+
+config = load_toml("./config.toml")
+print(config["section"]["key"])
+```
+
+---
+
+### write_toml
+
+Write a dictionary to a TOML file.
+
+```python
+def write_toml(path: str, val: dict) -> None
+```
+
+#### Parameters
+
+<ParamField path="path" type="str" required>
+  Path to the TOML file to write.
+</ParamField>
+
+<ParamField path="val" type="dict" required>
+  Dictionary to serialize and write to the TOML file.
+</ParamField>
+
+#### Returns
+
+`None` - The function writes to the file in place.
+
+#### Usage Example
+
+From `bootstrap.py:83`:
+
+```python
+from syft_flwr.config import write_toml
+
+pyproject_conf = {
+    "tool": {
+        "syft_flwr": {
+            "app_name": "ds@example.com_my-project_1234567890",
+            "datasites": ["do1@example.com", "do2@example.com"],
+            "aggregator": "ds@example.com",
+            "transport": "syftbox"
+        }
+    }
+}
+
+write_toml("./pyproject.toml", pyproject_conf)
+```
+
+## Configuration Structure
+
+After bootstrapping, your `pyproject.toml` will contain both Flower and Syft-Flwr configurations:
+
+### Flower Configuration
+
+```toml
+[tool.flwr.app.components]
+serverapp = "your_project.server_app:app"
+clientapp = "your_project.client_app:app"
+
+[tool.flwr.app.config]
+partition-id = 0
+num-partitions = 1
+```
+
+### Syft-Flwr Configuration
+
+```toml
+[tool.syft_flwr]
+app_name = "ds@openmined.org_fl-diabetes-prediction_1753435643"
+datasites = [
+    "do1@openmined.org",
+    "do2@openmined.org",
+]
+aggregator = "ds@openmined.org"
+transport = "syftbox"  # or "p2p"
+```
+
+### Project Dependencies
+
+```toml
+[project]
+name = "fl-diabetes-prediction"
+dependencies = [
+    "flwr>=1.0.0",
+    "syft_flwr==0.1.0",  # Added automatically by bootstrap
+    # ... other dependencies
+]
+```
+
+## Transport Types
+
+<ParamField path="syftbox" type="string">
+  **Default for local/server environments**
+  
+  Uses local SyftBox file synchronization with RPC and end-to-end encryption. Best for:
+  - Local development and testing
+  - Server deployments with SyftBox installed
+  - Maximum security with E2E encryption
+</ParamField>
+
+<ParamField path="p2p" type="string">
+  **Default for Google Colab**
+  
+  Uses peer-to-peer synchronization via cloud storage (Google Drive/OneDrive). Best for:
+  - Google Colab environments
+  - Remote collaboration without SyftBox
+  - Cloud-based deployments
+</ParamField>
+
+## Validation
+
+The `load_flwr_pyproject` function validates:
+
+1. **File existence** - `pyproject.toml` must exist
+2. **Required sections** - Must have `[tool.flwr.app]` configuration
+3. **Component references** - `serverapp` and `clientapp` must be valid Python module paths
+4. **Module availability** - Referenced modules must be importable (when `check_module=True`)
+
+## Notes
+
+- Configuration files are written in binary mode for proper TOML encoding
+- Validation warnings are logged but don't prevent loading
+- Module checking can be disabled for faster loading during testing

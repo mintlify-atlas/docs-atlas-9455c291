@@ -1,0 +1,644 @@
+---
+title: Event System
+description: API reference for the event handling and message coordination system
+---
+
+The event system provides abstractions for handling asynchronous FL messages across different transport layers.
+
+## SyftFlwrEvents Protocol
+
+Base protocol defining the event handling interface.
+
+### Interface Definition
+
+```python
+from abc import ABC, abstractmethod
+from pathlib import Path
+from typing import Callable, Optional, Union
+
+MessageHandler = Callable[[bytes], Optional[Union[str, bytes]]]
+
+class SyftFlwrEvents(ABC):
+    """Protocol for syft-flwr event handling implementations.
+    
+    This abstraction allows syft-flwr to work with different
+    transport/event mechanisms:
+    - syft_core: SyftEvents with watchdog file watching + syft_rpc
+    - syft_client: P2P File-based polling via Google Drive sync
+    """
+```
+
+**Source:** `src/syft_flwr/events/protocol.py:11`
+
+### Properties
+
+#### client_email
+
+```python
+@property
+@abstractmethod
+def client_email(self) -> str
+```
+
+Get the email address of the current user.
+
+#### app_dir
+
+```python
+@property
+@abstractmethod
+def app_dir(self) -> Path
+```
+
+Get the path to the app data directory.
+
+#### is_running
+
+```python
+@property
+@abstractmethod
+def is_running(self) -> bool
+```
+
+Check if the event loop is currently running.
+
+### Methods
+
+#### on_request
+
+```python
+@abstractmethod
+def on_request(
+    self,
+    endpoint: str,
+    handler: MessageHandler,
+    auto_decrypt: bool = True,
+    encrypt_reply: bool = False,
+) -> None
+```
+
+Register a handler for incoming messages at an endpoint.
+
+<ParamField path="endpoint" type="str" required>
+  The endpoint path (e.g., "/messages")
+</ParamField>
+
+<ParamField path="handler" type="MessageHandler" required>
+  Function that receives message bytes and returns optional response
+</ParamField>
+
+<ParamField path="auto_decrypt" type="bool" default={true}>
+  Whether to auto-decrypt encrypted messages (SyftBox only)
+</ParamField>
+
+<ParamField path="encrypt_reply" type="bool" default={false}>
+  Whether to encrypt reply messages (SyftBox only)
+</ParamField>
+
+#### run_forever
+
+```python
+@abstractmethod
+def run_forever(self) -> None
+```
+
+Start the main event loop and block until stopped.
+
+#### stop
+
+```python
+@abstractmethod
+def stop(self) -> None
+```
+
+Signal the event loop to stop.
+
+## Factory Function
+
+### create_events_watcher
+
+```python
+def create_events_watcher(
+    app_name: str,
+    client: Optional[Union[Client, SyftFlwrClient]] = None,
+    cleanup_expiry: str = "1d",
+    cleanup_interval: str = "1d",
+    poll_interval: float = 2.0,
+) -> SyftFlwrEvents
+```
+
+Create the appropriate events adapter based on client type.
+
+**Source:** `src/syft_flwr/events/factory.py:17`
+
+<ParamField path="app_name" type="str" required>
+  Name of the FL app (e.g., "flwr/my_app")
+</ParamField>
+
+<ParamField path="client" type="Optional[Union[Client, SyftFlwrClient]]" default="None">
+  SyftFlwrClient or syft_core.Client instance (auto-created if None)
+</ParamField>
+
+<ParamField path="cleanup_expiry" type="str" default="1d">
+  Expiry time for cleanup - SyftEvents only (e.g., "1d", "12h")
+</ParamField>
+
+<ParamField path="cleanup_interval" type="str" default="1d">
+  Cleanup interval - SyftEvents only (e.g., "1d", "6h")
+</ParamField>
+
+<ParamField path="poll_interval" type="float" default={2.0}>
+  Polling interval in seconds - P2PFileEvents only
+</ParamField>
+
+<ResponseField name="return" type="SyftFlwrEvents">
+  Either `SyftEvents` (for SyftBox) or `P2PFileEvents` (for P2P mode)
+</ResponseField>
+
+**Auto-detection logic:**
+- If `client.get_client()` returns `syft_core.Client` → `SyftEvents`
+- If `client.get_client()` returns `SyftP2PClient` → `P2PFileEvents`
+
+**Example:**
+
+```python
+from syft_flwr.events import create_events_watcher
+from syft_flwr.client import create_client
+
+# Auto-detect transport
+client = create_client()
+events = create_events_watcher(
+    app_name="flwr/diabetes",
+    client=client,
+    poll_interval=2.0
+)
+
+print(type(events).__name__)  # "SyftEvents" or "P2PFileEvents"
+```
+
+## SyftGrid
+
+Server-side message orchestrator for coordinating FL communication.
+
+### Class Definition
+
+```python
+from flwr.server.grid import Grid
+
+class SyftGrid(Grid):
+    """SyftGrid is the server-side message orchestrator for federated learning.
+    
+    This class abstracts the RPC layer to support both syft_core and syft_client
+    environments. The appropriate RPC adapter is auto-detected based on the client.
+    
+    Supported configurations:
+    - syft_core: Full syft_rpc/syft_crypto stack with optional encryption
+    - syft_client: P2P File-based RPC via Google Drive (no encryption)
+    """
+```
+
+**Source:** `src/syft_flwr/fl_orchestrator/syft_grid.py:38`
+
+### Constructor
+
+<ParamField path="app_name" type="str" required>
+  Name of the FL application (e.g., "flwr/diabetes")
+</ParamField>
+
+<ParamField path="datasites" type="Optional[list[str]]" default="None">
+  List of data owner email addresses
+</ParamField>
+
+<ParamField path="client" type="Optional[Union[Client, SyftFlwrClient]]" default="None">
+  SyftFlwrClient or syft_core.Client (auto-created if None)
+</ParamField>
+
+<ParamField path="rpc" type="Optional[SyftFlwrRpc]" default="None">
+  RPC adapter for message transport (auto-created if None)
+</ParamField>
+
+**Example:**
+
+```python
+from syft_flwr.fl_orchestrator.syft_grid import SyftGrid
+
+grid = SyftGrid(
+    app_name="flwr/diabetes",
+    datasites=[
+        "hospital1@example.com",
+        "hospital2@example.com"
+    ]
+)
+
+grid.set_run(run_id=12345)
+print(grid.get_node_ids())  # [<node_id_1>, <node_id_2>]
+```
+
+### Properties
+
+#### run
+
+```python
+@property
+def run(self) -> Run
+```
+
+Get the current Flower Run object with metadata.
+
+<ResponseField name="return" type="flwr.common.typing.Run">
+  Copy of the current Run object
+</ResponseField>
+
+### Methods
+
+#### set_run
+
+```python
+def set_run(self, run_id: int) -> None
+```
+
+Set the run ID for this federated learning session.
+
+<ParamField path="run_id" type="int" required>
+  Unique identifier for the FL run/session
+</ParamField>
+
+**Example:**
+
+```python
+from random import randint
+
+run_id = randint(0, 1000)
+grid.set_run(run_id)
+print(grid.run.run_id)  # 742
+```
+
+#### get_client_email
+
+```python
+def get_client_email(self) -> str
+```
+
+Get the email address of the server's client.
+
+<ResponseField name="return" type="str">
+  Email address as a string
+</ResponseField>
+
+#### get_node_ids
+
+```python
+def get_node_ids(self) -> list[int]
+```
+
+Get node IDs of all connected FL clients.
+
+<ResponseField name="return" type="list[int]">
+  List of integer node IDs (deterministically generated from emails)
+</ResponseField>
+
+**Example:**
+
+```python
+grid = SyftGrid(
+    app_name="flwr/app",
+    datasites=["do1@example.com", "do2@example.com"]
+)
+
+node_ids = grid.get_node_ids()
+print(node_ids)  # [2891336453, 3924203289]
+```
+
+#### create_message
+
+```python
+def create_message(
+    self,
+    content: RecordDict,
+    message_type: str,
+    dst_node_id: int,
+    group_id: str,
+    ttl: Optional[float] = None,
+) -> Message
+```
+
+Create a new Flower message with proper metadata.
+
+<ParamField path="content" type="RecordDict" required>
+  Message payload (e.g., model parameters, metrics)
+</ParamField>
+
+<ParamField path="message_type" type="str" required>
+  Type of FL message (e.g., MessageType.TRAIN, MessageType.EVALUATE)
+</ParamField>
+
+<ParamField path="dst_node_id" type="int" required>
+  Destination node ID (client identifier)
+</ParamField>
+
+<ParamField path="group_id" type="str" required>
+  Message group identifier for related messages
+</ParamField>
+
+<ParamField path="ttl" type="Optional[float]" default="None">
+  Time-to-live in seconds for message expiration
+</ParamField>
+
+<ResponseField name="return" type="flwr.common.message.Message">
+  Flower Message ready to be sent
+</ResponseField>
+
+**Example:**
+
+```python
+from flwr.common.constant import MessageType
+from flwr.common.record import RecordDict, ParametersRecord
+
+message = grid.create_message(
+    content=RecordDict({
+        "parameters": ParametersRecord(...),
+        "config": ConfigRecord({"epochs": 5})
+    }),
+    message_type=MessageType.TRAIN,
+    dst_node_id=2891336453,
+    group_id="round_1",
+    ttl=60.0
+)
+```
+
+#### push_messages
+
+```python
+def push_messages(self, messages: Iterable[Message]) -> Iterable[str]
+```
+
+Push FL messages to specified clients asynchronously.
+
+<ParamField path="messages" type="Iterable[Message]" required>
+  Iterable of Flower Messages to send to clients
+</ParamField>
+
+<ResponseField name="return" type="Iterable[str]">
+  List of future IDs for retrieving responses
+</ResponseField>
+
+**Example:**
+
+```python
+from flwr.common.constant import MessageType
+
+messages = [
+    grid.create_message(
+        content=RecordDict({...}),
+        message_type=MessageType.TRAIN,
+        dst_node_id=node_id,
+        group_id="round_1",
+        ttl=120.0
+    )
+    for node_id in grid.get_node_ids()
+]
+
+future_ids = grid.push_messages(messages)
+print(f"Sent {len(future_ids)} messages")
+```
+
+#### pull_messages
+
+```python
+def pull_messages(
+    self,
+    message_ids: List[str]
+) -> Tuple[Dict[str, Message], set]
+```
+
+Pull response messages from clients using future IDs.
+
+<ParamField path="message_ids" type="List[str]" required>
+  List of future IDs from push_messages()
+</ParamField>
+
+<ResponseField name="return" type="Tuple[Dict[str, Message], set]">
+  Tuple of:
+  - Dict mapping message_id to Message response
+  - Set of completed message_ids (got response or failed)
+</ResponseField>
+
+**Example:**
+
+```python
+future_ids = grid.push_messages(messages)
+
+# Poll for responses
+responses, completed = grid.pull_messages(list(future_ids))
+
+for msg_id, response in responses.items():
+    print(f"Got response for {msg_id}")
+    if response.has_error():
+        print(f"Error: {response.error.reason}")
+
+print(f"Completed: {len(completed)}/{len(future_ids)}")
+```
+
+#### send_and_receive
+
+```python
+def send_and_receive(
+    self,
+    messages: Iterable[Message],
+    *,
+    timeout: Optional[float] = None,
+) -> Iterable[Message]
+```
+
+Push messages and wait for all replies (blocking).
+
+<ParamField path="messages" type="Iterable[Message]" required>
+  Messages to send
+</ParamField>
+
+<ParamField path="timeout" type="Optional[float]" default="120.0">
+  Maximum time to wait for replies (seconds). Can be overridden by SYFT_FLWR_MSG_TIMEOUT env var
+</ParamField>
+
+<ResponseField name="return" type="Iterable[Message]">
+  Collection of reply messages received
+</ResponseField>
+
+**Example:**
+
+```python
+import os
+
+# Set timeout via environment
+os.environ["SYFT_FLWR_MSG_TIMEOUT"] = "180"  # 3 minutes
+
+messages = [create_train_message(node_id) for node_id in grid.get_node_ids()]
+
+# Send and wait for all responses
+responses = grid.send_and_receive(messages)
+
+print(f"Received {len(responses)} responses")
+for response in responses:
+    if response.has_error():
+        print(f"Client error: {response.error.reason}")
+```
+
+#### send_stop_signal
+
+```python
+def send_stop_signal(
+    self,
+    group_id: str,
+    reason: str = "Training complete",
+    ttl: float = 60.0
+) -> List[Message]
+```
+
+Send a stop signal to all connected FL clients.
+
+<ParamField path="group_id" type="str" required>
+  Identifier for this group of stop messages
+</ParamField>
+
+<ParamField path="reason" type="str" default="Training complete">
+  Human-readable reason for stopping
+</ParamField>
+
+<ParamField path="ttl" type="float" default={60.0}>
+  Time-to-live for stop messages in seconds
+</ParamField>
+
+<ResponseField name="return" type="List[Message]">
+  List of stop Messages that were sent
+</ResponseField>
+
+**Example:**
+
+```python
+# After training completes
+try:
+    # ... FL training ...
+    pass
+finally:
+    grid.send_stop_signal(
+        group_id="final",
+        reason="Training complete - 10 rounds finished"
+    )
+    print("Sent stop signals to all clients")
+```
+
+### Environment Variables
+
+<ParamField path="SYFT_FLWR_MSG_TIMEOUT" type="float" default="120.0">
+  Maximum time (seconds) to wait for client responses in send_and_receive()
+</ParamField>
+
+<ParamField path="SYFT_FLWR_POLL_INTERVAL" type="float" default="3.0">
+  Polling interval (seconds) for checking client responses
+</ParamField>
+
+<ParamField path="SYFT_FLWR_ENCRYPTION_ENABLED" type="str" default="true">
+  Enable/disable encryption in SyftBox mode ("true" or "false")
+</ParamField>
+
+### Encryption Behavior
+
+**SyftBox Mode (encryption enabled):**
+```python
+# Message flow
+Flower Message → serialize → base64 encode → syft_rpc.send(encrypt=True)
+→ X3DH encryption → filesystem → client decrypts → process
+```
+
+**SyftBox Mode (encryption disabled):**
+```python
+# Message flow
+Flower Message → serialize → syft_rpc.send(encrypt=False)
+→ filesystem → client receives plaintext → process
+```
+
+**P2P Mode:**
+```python
+# Message flow
+Flower Message → serialize → write .request file to Google Drive
+→ client polls Drive → reads .request → process
+→ writes .response to Drive → server polls and reads
+```
+
+## Complete Example
+
+Full example showing event handling and message coordination:
+
+```python
+from syft_flwr.fl_orchestrator.syft_grid import SyftGrid
+from flwr.common import Context
+from flwr.common.constant import MessageType
+from flwr.common.record import RecordDict
+import time
+
+# Create SyftGrid
+grid = SyftGrid(
+    app_name="flwr/example",
+    datasites=[
+        "client1@example.com",
+        "client2@example.com",
+        "client3@example.com"
+    ]
+)
+
+# Set run ID
+grid.set_run(run_id=42)
+
+# Create training messages
+node_ids = grid.get_node_ids()
+messages = [
+    grid.create_message(
+        content=RecordDict({"round": 1}),
+        message_type=MessageType.TRAIN,
+        dst_node_id=node_id,
+        group_id="training_round_1",
+        ttl=120.0
+    )
+    for node_id in node_ids
+]
+
+# Send messages
+print("Sending training messages...")
+future_ids = list(grid.push_messages(messages))
+print(f"Sent {len(future_ids)} messages")
+
+# Poll for responses
+print("Waiting for responses...")
+start_time = time.time()
+pending_ids = set(future_ids)
+responses = {}
+
+while pending_ids and (time.time() - start_time) < 120:
+    batch, completed = grid.pull_messages(list(pending_ids))
+    responses.update(batch)
+    pending_ids -= completed
+    
+    if pending_ids:
+        print(f"Still waiting for {len(pending_ids)} responses...")
+        time.sleep(3)
+
+print(f"\nReceived {len(responses)} responses")
+
+# Process responses
+for msg_id, response in responses.items():
+    if response.has_error():
+        print(f"Error in {msg_id}: {response.error.reason}")
+    else:
+        print(f"Success: {msg_id}")
+
+# Send stop signals
+print("\nSending stop signals...")
+grid.send_stop_signal(group_id="final", reason="Example complete")
+print("Done!")
+```
+
+## See Also
+
+- [RPC Protocol](/api/orchestration/rpc) - Message transport layer
+- [Client Orchestration](/api/orchestration/client) - Client-side event handling
+- [Server Orchestration](/api/orchestration/server) - Server-side coordination

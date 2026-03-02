@@ -1,0 +1,532 @@
+---
+title: SyftBox Transport
+description: API reference for SyftBox transport layer with RPC and encryption support
+---
+
+The SyftBox transport uses the traditional `syft_core.Client` to provide full RPC, encryption, and event handling capabilities for federated learning.
+
+## SyftCoreClient
+
+Adapter that wraps `syft_core.Client` for use with Syft-Flwr.
+
+### Class Definition
+
+```python
+from syft_flwr.client import SyftCoreClient
+from syft_core import Client
+
+class SyftCoreClient(SyftFlwrClient):
+    """Adapter for syft_core.Client - the traditional SyftBox client.
+    
+    This adapter wraps syft_core.Client and provides full syft-rpc/syft-crypto/syft-event
+    functionality through get_client().
+    """
+```
+
+**Source:** `src/syft_flwr/client/syft_core_client.py:9`
+
+### Constructor
+
+<ParamField path="client" type="syft_core.Client" required>
+  The underlying SyftBox client instance to wrap
+</ParamField>
+
+### Class Methods
+
+#### load
+
+```python
+@classmethod
+def load(cls, filepath: Optional[str] = None) -> SyftCoreClient
+```
+
+Load a SyftCoreClient from a config file.
+
+<ParamField path="filepath" type="str" default="~/.syftbox/config.json">
+  Path to the SyftBox client configuration file
+</ParamField>
+
+<ResponseField name="return" type="SyftCoreClient">
+  Initialized client instance
+</ResponseField>
+
+**Example:**
+
+```python
+from syft_flwr.client import SyftCoreClient
+
+# Load from default location
+client = SyftCoreClient.load()
+
+# Load from custom path
+client = SyftCoreClient.load("/custom/path/config.json")
+
+print(client.email)  # user@example.com
+print(client.my_datasite)  # Path('/home/user/.syftbox/user@example.com')
+```
+
+### Properties
+
+#### email
+
+```python
+@property
+def email(self) -> str
+```
+
+Get the email address of the current user.
+
+<ResponseField name="return" type="str">
+  User's email address (e.g., "user@example.com")
+</ResponseField>
+
+#### config_path
+
+```python
+@property
+def config_path(self) -> Path
+```
+
+Get the path to the SyftBox configuration file.
+
+<ResponseField name="return" type="Path">
+  Path to the config file
+</ResponseField>
+
+#### my_datasite
+
+```python
+@property
+def my_datasite(self) -> Path
+```
+
+Get the path to the user's datasite directory.
+
+<ResponseField name="return" type="Path">
+  Path to user's datasite (e.g., `~/.syftbox/datasites/user@example.com/`)
+</ResponseField>
+
+#### datasites
+
+```python
+@property
+def datasites(self) -> Path
+```
+
+Get the path to the datasites root directory.
+
+<ResponseField name="return" type="Path">
+  Path to datasites root (e.g., `~/.syftbox/datasites/`)
+</ResponseField>
+
+### Methods
+
+#### app_data
+
+```python
+def app_data(
+    self,
+    app_name: Optional[str] = None,
+    datasite: Optional[str] = None,
+) -> Path
+```
+
+Get the app data directory path for a specific app and datasite.
+
+<ParamField path="app_name" type="str" default="None">
+  Name of the application (e.g., "flwr/my_fl_app")
+</ParamField>
+
+<ParamField path="datasite" type="str" default="self.email">
+  Email address of the datasite owner
+</ParamField>
+
+<ResponseField name="return" type="Path">
+  Path to app data directory
+</ResponseField>
+
+**Example:**
+
+```python
+client = SyftCoreClient.load()
+
+# Get app data for current user
+app_path = client.app_data("flwr/diabetes_prediction")
+# /home/user/.syftbox/datasites/user@example.com/app_data/flwr/diabetes_prediction
+
+# Get app data for another datasite
+other_path = client.app_data("flwr/diabetes_prediction", "other@example.com")
+# /home/user/.syftbox/datasites/other@example.com/app_data/flwr/diabetes_prediction
+```
+
+#### get_client
+
+```python
+def get_client(self) -> Client
+```
+
+Get the underlying `syft_core.Client` for RPC/crypto/event operations.
+
+<ResponseField name="return" type="syft_core.Client">
+  The wrapped native SyftBox client with full RPC/crypto/event stack
+</ResponseField>
+
+**Example:**
+
+```python
+from syft_flwr.client import SyftCoreClient
+from syft_core import Client as SyftCoreNativeClient
+
+wrapper = SyftCoreClient.load()
+native_client = wrapper.get_client()
+
+# Type check for RPC path selection
+if isinstance(native_client, SyftCoreNativeClient):
+    # Use syft_rpc for message sending
+    from syft_rpc import rpc
+    future = rpc.send(
+        url=rpc.make_url("recipient@example.com", app_name="flwr/app"),
+        body=b"message",
+        client=native_client,
+        encrypt=True
+    )
+```
+
+## SyftRpc
+
+RPC adapter that wraps `syft_rpc` for message sending with encryption support.
+
+### Class Definition
+
+```python
+from syft_flwr.rpc import SyftRpc
+from syft_core import Client
+
+class SyftRpc(SyftFlwrRpc):
+    """Adapter wrapping syft_rpc for traditional SyftBox.
+    
+    This adapter provides the full syft_rpc functionality including:
+    - URL-based message routing
+    - Futures database for response tracking
+    - Optional encryption via syft_crypto
+    """
+```
+
+**Source:** `src/syft_flwr/rpc/syft_rpc.py:12`
+
+### Constructor
+
+<ParamField path="client" type="syft_core.Client" required>
+  The SyftBox client for message transport
+</ParamField>
+
+<ParamField path="app_name" type="str" required>
+  Name of the FL application (e.g., "flwr/my_app")
+</ParamField>
+
+### Methods
+
+#### send
+
+```python
+def send(
+    self,
+    to_email: str,
+    app_name: str,
+    endpoint: str,
+    body: bytes,
+    encrypt: bool = False,
+) -> str
+```
+
+Send a message to a recipient using syft_rpc.
+
+<ParamField path="to_email" type="str" required>
+  Recipient's email address
+</ParamField>
+
+<ParamField path="app_name" type="str" required>
+  Name of the FL application
+</ParamField>
+
+<ParamField path="endpoint" type="str" required>
+  RPC endpoint (e.g., "messages", "rpc/fit")
+</ParamField>
+
+<ParamField path="body" type="bytes" required>
+  Message body as bytes (serialized Flower message)
+</ParamField>
+
+<ParamField path="encrypt" type="bool" default={false}>
+  Whether to encrypt the message using syft_crypto (X3DH)
+</ParamField>
+
+<ResponseField name="return" type="str">
+  Future ID for tracking the response
+</ResponseField>
+
+**Example:**
+
+```python
+from syft_flwr.rpc import SyftRpc
+from syft_core import Client
+
+client = Client.load()
+rpc = SyftRpc(client=client, app_name="flwr/my_app")
+
+# Send encrypted message
+future_id = rpc.send(
+    to_email="recipient@example.com",
+    app_name="flwr/my_app",
+    endpoint="messages",
+    body=b"serialized_message_data",
+    encrypt=True
+)
+
+print(f"Message sent, future_id: {future_id}")
+# Message sent, future_id: 550e8400-e29b-41d4-a716-446655440000
+```
+
+#### get_response
+
+```python
+def get_response(self, future_id: str) -> Optional[bytes]
+```
+
+Retrieve the response for a previously sent message.
+
+<ParamField path="future_id" type="str" required>
+  The future ID returned by `send()`
+</ParamField>
+
+<ResponseField name="return" type="Optional[bytes]">
+  Response body as bytes, or `None` if not ready yet
+</ResponseField>
+
+**Example:**
+
+```python
+import time
+
+future_id = rpc.send(
+    to_email="recipient@example.com",
+    app_name="flwr/my_app",
+    endpoint="messages",
+    body=b"request_data",
+    encrypt=True
+)
+
+# Poll for response
+while True:
+    response = rpc.get_response(future_id)
+    if response is not None:
+        print(f"Got response: {len(response)} bytes")
+        break
+    time.sleep(1)
+```
+
+#### delete_future
+
+```python
+def delete_future(self, future_id: str) -> None
+```
+
+Delete a future after processing its response.
+
+<ParamField path="future_id" type="str" required>
+  The future ID to delete from the futures database
+</ParamField>
+
+**Example:**
+
+```python
+response = rpc.get_response(future_id)
+if response is not None:
+    # Process response
+    process_message(response)
+    
+    # Clean up
+    rpc.delete_future(future_id)
+```
+
+## SyftEvents
+
+Event handler that wraps `syft_event.SyftEvents` for real-time message processing.
+
+### Class Definition
+
+```python
+from syft_flwr.events import SyftEvents
+from syft_core import Client
+
+class SyftEvents(SyftFlwrEvents):
+    """Adapter wrapping syft_event.SyftEvents for traditional SyftBox.
+    
+    This adapter provides the syft-extras stack (syft_rpc/syft_crypto/syft_event)
+    for FL message handling when running with syft_core.Client.
+    """
+```
+
+**Source:** `src/syft_flwr/events/syft_events.py:16`
+
+### Constructor
+
+<ParamField path="app_name" type="str" required>
+  Name of the FL application
+</ParamField>
+
+<ParamField path="client" type="syft_core.Client" required>
+  The SyftBox client instance
+</ParamField>
+
+<ParamField path="cleanup_expiry" type="str" default="1d">
+  How long to keep processed messages before cleanup (e.g., "1d", "12h")
+</ParamField>
+
+<ParamField path="cleanup_interval" type="str" default="1d">
+  How often to run cleanup (e.g., "1d", "6h")
+</ParamField>
+
+### Properties
+
+#### client_email
+
+```python
+@property
+def client_email(self) -> str
+```
+
+<ResponseField name="return" type="str">
+  Email address of the current client
+</ResponseField>
+
+#### app_dir
+
+```python
+@property
+def app_dir(self) -> Path
+```
+
+<ResponseField name="return" type="Path">
+  Path to the app data directory
+</ResponseField>
+
+#### is_running
+
+```python
+@property
+def is_running(self) -> bool
+```
+
+<ResponseField name="return" type="bool">
+  Whether the event loop is currently running
+</ResponseField>
+
+### Methods
+
+#### on_request
+
+```python
+def on_request(
+    self,
+    endpoint: str,
+    handler: Callable[[bytes], Optional[Union[str, bytes]]],
+    auto_decrypt: bool = True,
+    encrypt_reply: bool = False,
+) -> None
+```
+
+Register a handler for incoming messages at an endpoint.
+
+<ParamField path="endpoint" type="str" required>
+  The endpoint path (e.g., "/messages", "/rpc/fit")
+</ParamField>
+
+<ParamField path="handler" type="Callable[[bytes], Optional[Union[str, bytes]]]" required>
+  Function that receives message bytes and returns response (str or bytes)
+</ParamField>
+
+<ParamField path="auto_decrypt" type="bool" default={true}>
+  Whether to automatically decrypt incoming encrypted messages
+</ParamField>
+
+<ParamField path="encrypt_reply" type="bool" default={false}>
+  Whether to encrypt the reply message
+</ParamField>
+
+**Example:**
+
+```python
+from syft_flwr.events import SyftEvents
+from syft_core import Client
+
+client = Client.load()
+events = SyftEvents(
+    app_name="flwr/my_app",
+    client=client,
+    cleanup_expiry="1d",
+    cleanup_interval="1d"
+)
+
+def handle_message(body: bytes) -> bytes:
+    """Process incoming FL message and return response."""
+    print(f"Received message: {len(body)} bytes")
+    
+    # Deserialize and process message
+    # ... FL logic here ...
+    
+    return b"response_data"
+
+# Register handler with encryption
+events.on_request(
+    endpoint="/messages",
+    handler=handle_message,
+    auto_decrypt=True,
+    encrypt_reply=True
+)
+
+print("Starting event loop...")
+events.run_forever()
+```
+
+#### run_forever
+
+```python
+def run_forever(self) -> None
+```
+
+Start the event loop and block until stopped. Uses watchdog file monitoring for real-time message detection.
+
+**Example:**
+
+```python
+try:
+    events.run_forever()
+except KeyboardInterrupt:
+    print("Shutting down...")
+    events.stop()
+```
+
+#### stop
+
+```python
+def stop(self) -> None
+```
+
+Signal the event loop to stop gracefully.
+
+#### is_cleanup_running
+
+```python
+def is_cleanup_running(self) -> bool
+```
+
+<ResponseField name="return" type="bool">
+  Whether the cleanup service is currently running
+</ResponseField>
+
+## See Also
+
+- [P2P Transport](/api/transport/p2p) - Cloud-based alternative
+- [Transport Overview](/api/transport/overview) - Architecture and comparison
+- [Client Orchestration](/api/orchestration/client) - Using transport in FL clients

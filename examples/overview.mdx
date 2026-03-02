@@ -1,0 +1,124 @@
+---
+title: "Examples Overview"
+description: "Explore real-world federated learning and privacy-preserving examples with Syft-Flwr"
+---
+
+Syft-Flwr combines the flexibility of Flower (a popular federated learning framework) with the privacy-preserving networking capabilities of SyftBox. This section provides hands-on examples that demonstrate different use cases and deployment options.
+
+## Available Examples
+
+Explore these complete, production-ready examples to learn how to build federated learning applications:
+
+<CardGroup cols={2}>
+  <Card title="Diabetes Prediction" icon="brain" href="/examples/diabetes-prediction">
+    Train a neural network for diabetes prediction using federated learning across multiple data owners.
+  </Card>
+  
+  <Card title="Federated Analytics" icon="chart-bar" href="/examples/federated-analytics">
+    Compute aggregated statistics and histograms on distributed datasets without centralizing data.
+  </Card>
+  
+  <Card title="FedRAG" icon="magnifying-glass" href="/examples/fedrag">
+    Build a Federated Retrieval Augmented Generation system for privacy-preserving question answering.
+  </Card>
+  
+  <Card title="Local Simulation" icon="laptop" href="/examples/local-simulation">
+    Run complete federated learning workflows on your local machine for development and testing.
+  </Card>
+</CardGroup>
+
+## Deployment Options
+
+Each example supports multiple deployment modes to fit your development and production needs:
+
+<CardGroup cols={3}>
+  <Card title="Local Simulation" icon="desktop" href="/examples/local-simulation">
+    Test locally with Jupyter notebooks simulating multiple parties on one machine.
+  </Card>
+  
+  <Card title="Google Drive" icon="cloud" href="/examples/google-drive">
+    Zero-setup federated learning using only Google Colab notebooks.
+  </Card>
+  
+  <Card title="SyftBox Network" icon="network-wired" href="/examples/syftbox">
+    Deploy across real distributed nodes using the SyftBox client.
+  </Card>
+</CardGroup>
+
+## Quick Start
+
+All examples follow a similar structure and workflow:
+
+### 1. Clone the Example
+
+```bash
+git clone https://github.com/OpenMined/syft-flwr.git _tmp \
+    && mv _tmp/notebooks/<example-name> . \
+    && rm -rf _tmp && cd <example-name>
+```
+
+### 2. Install Dependencies
+
+```bash
+uv sync
+```
+
+### 3. Run Locally
+
+Start with the local notebooks to understand the workflow:
+
+- **Data Owners**: Open `local/do1.ipynb` and `local/do2.ipynb`
+- **Data Scientist**: Open `local/ds.ipynb`
+
+Switch between notebooks as indicated to simulate the complete federated workflow.
+
+### 4. Deploy Distributed
+
+Once you understand the local workflow, scale to real distributed deployment:
+
+- Use Google Colab notebooks for zero-setup deployment
+- Or install SyftBox client for production deployments
+
+## Key Features Demonstrated
+
+These examples showcase the core capabilities of Syft-Flwr:
+
+- **Privacy Preservation**: Raw data never leaves data owner environments
+- **Data Governance**: Data owners review and approve all computational jobs
+- **Flexible Aggregation**: Support for both model updates (FL) and statistics (analytics)
+- **Production Ready**: Real deployment options from local dev to distributed production
+- **Framework Integration**: Built on standard Flower patterns with SyftBox privacy layer
+
+## Example Comparison
+
+| Example | Use Case | Complexity | Key Technology |
+|---------|----------|------------|----------------|
+| [Diabetes Prediction](/examples/diabetes-prediction) | Binary classification with federated learning | Intermediate | PyTorch, SMOTE, FedAvg |
+| [Federated Analytics](/examples/federated-analytics) | Privacy-preserving data analysis | Beginner | Pandas, NumPy, Matplotlib |
+| [FedRAG](/examples/fedrag) | Distributed document retrieval for LLMs | Advanced | FAISS, Transformers, RAG |
+
+## Learning Path
+
+We recommend exploring the examples in this order:
+
+1. **Start with [Local Simulation](/examples/local-simulation)**: Understand the basics by running everything on your machine
+2. **Try [Federated Analytics](/examples/federated-analytics)**: Learn federated workflows with a simpler use case
+3. **Build [Diabetes Prediction](/examples/diabetes-prediction)**: Implement a complete federated learning pipeline
+4. **Explore [FedRAG](/examples/fedrag)**: Advanced use case combining federated learning with RAG
+5. **Deploy with [Google Drive](/examples/google-drive)**: Experience zero-setup distributed deployment
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="View API Reference" icon="code" href="/api/bootstrap">
+    Explore the complete Syft-Flwr API documentation.
+  </Card>
+  
+  <Card title="Join Community" icon="users" href="https://slack.openmined.org">
+    Get help and share your federated learning projects.
+  </Card>
+</CardGroup>
+
+<Note>
+  All examples use the [PIMA Indians Diabetes Database](https://www.kaggle.com/datasets/uciml/pima-indians-diabetes-database/) for demonstration purposes. The dataset is split across multiple data owners to simulate real-world federated scenarios.
+</Note>

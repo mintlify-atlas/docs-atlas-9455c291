@@ -1,0 +1,444 @@
+---
+title: "Google Colab Deployment"
+description: "Zero-setup federated learning across distributed parties using only Google Colab notebooks"
+---
+
+Run real federated learning across distributed parties without installing anything locally. Each participant uses a Google Colab notebook—making it perfect for demos, education, and rapid prototyping.
+
+<img src="https://github.com/OpenMined/syft-flwr/raw/main/notebooks/fl-diabetes-prediction/distributed-gdrive/banner.svg" alt="Zero-Setup Federated Learning" />
+
+## Overview
+
+Google Colab deployment enables true distributed federated learning with:
+
+- **Zero Installation**: No local Python, Docker, or package management needed
+- **Multi-Party Collaboration**: Each participant runs their own Colab notebook
+- **Real Distribution**: Notebooks run on separate Google Cloud instances
+- **Privacy Preservation**: Data stays in each participant's Colab runtime
+- **Easy Sharing**: Share notebooks via Google Drive links
+
+## The Parties
+
+In this federated learning flow, there are three key roles:
+
+1. **Data Owner 1 (DO1)**: Holds private data partition 0
+2. **Data Owner 2 (DO2)**: Holds private data partition 1
+3. **Data Scientist (DS)**: Coordinates training, submits jobs, aggregates results
+
+Each party runs in a separate Google Colab notebook. You can:
+- Use three different Google accounts (your own setup)
+- Invite two friends to join (collaborative demo)
+- Use the same account but run notebooks separately (educational demo)
+
+<Note>
+  Raw data never leaves the data owner's Colab environment—only model updates are shared.
+</Note>
+
+## Prerequisites
+
+- Three Google accounts (one for each party), OR
+- Two friends willing to collaborate, OR
+- One account running three notebooks separately
+- Access to Google Colab (free tier works fine)
+
+## Quick Start
+
+Get the Colab notebooks:
+
+```bash
+git clone https://github.com/OpenMined/syft-flwr.git
+cd syft-flwr/notebooks/fl-diabetes-prediction/distributed-gdrive
+```
+
+The directory contains:
+- `do1.ipynb` - Data Owner 1 notebook
+- `do2.ipynb` - Data Owner 2 notebook
+- `ds.ipynb` - Data Scientist notebook
+- `README.md` - Detailed instructions
+
+## Step-by-Step Workflow
+
+### Step 1: Set Up Data Owner 1
+
+**Person 1** opens `do1.ipynb` in Google Colab.
+
+#### Install Dependencies
+
+```python
+# Cell 1: Install syft-flwr
+!uv pip install -q "git+https://github.com/OpenMined/syft-flwr.git@main"
+```
+
+#### Login as Data Owner
+
+```python
+# Cell 2: Initialize data owner client
+import syft_client as sc
+import syft_flwr
+
+print(f"{sc.__version__ = }")
+print(f"{syft_flwr.__version__ = }")
+
+do_email = input("Enter the Data Owner's email: ")  # e.g., do1@example.com
+do_client = sc.login_do(email=do_email)
+```
+
+#### Download and Register Dataset
+
+```python
+# Cell 3: Download PIMA diabetes dataset
+from pathlib import Path
+from huggingface_hub import snapshot_download
+
+DATASET_DIR = Path("./dataset/").expanduser().absolute()
+
+if not DATASET_DIR.exists():
+    snapshot_download(
+        repo_id="khoaguin/pima-indians-diabetes-database-partitions",
+        repo_type="dataset",
+        local_dir=DATASET_DIR,
+    )
+
+# Cell 4: Register dataset with Syft
+partition_number = 0  # DO1 uses partition 0
+DATASET_PATH = DATASET_DIR / f"pima-indians-diabetes-database-{partition_number}"
+
+do_client.create_dataset(
+    name="pima-indians-diabetes-database",
+    mock_path=DATASET_PATH / "mock",        # Public sample data
+    private_path=DATASET_PATH / "private",  # Real private data
+    summary="PIMA Indians Diabetes dataset - Partition 0",
+    readme_path=DATASET_PATH / "README.md",
+    tags=["healthcare", "diabetes"],
+    sync=True,
+)
+
+do_client.datasets.get_all()
+```
+
+**Key Concept**: The `mock_path` contains synthetic/sample data that data scientists can explore. The `private_path` contains the real data that never leaves this environment.
+
+<Tip>
+  Keep this Colab notebook running. Data Owner 1 will need to approve jobs later in the workflow.
+</Tip>
+
+### Step 2: Set Up Data Owner 2
+
+**Person 2** opens `do2.ipynb` in Google Colab.
+
+Repeat the same steps as DO1, but change the partition number:
+
+```python
+# Cell 4: Use partition 1 instead of 0
+partition_number = 1  # DO2 uses partition 1
+```
+
+Everything else stays the same. Now you have two data owners, each holding a different slice of the diabetes dataset.
+
+### Step 3: Set Up Data Scientist
+
+**Person 3** opens `ds.ipynb` in Google Colab.
+
+#### Install and Login
+
+```python
+# Cell 1: Install dependencies
+!uv pip install -q "git+https://github.com/OpenMined/syft-flwr.git@main"
+
+# Cell 2: Login as data scientist
+import syft_client as sc
+import syft_flwr
+
+ds_email = input("Enter the Data Scientist's email: ")  # e.g., ds@example.com
+ds_client = sc.login_ds(email=ds_email)
+```
+
+#### Add Peers (Data Owners)
+
+```python
+# Cell 3: Connect to data owners
+do1_email = input("Enter the First Data Owner's email: ")  # Get from Person 1
+ds_client.add_peer(do1_email)
+
+do2_email = input("Enter the Second Data Owner's email: ")  # Get from Person 2
+ds_client.add_peer(do2_email)
+
+# Verify peers are added
+ds_client.peers
+```
+
+#### Explore Available Datasets
+
+```python
+# Cell 4: Check DO1's datasets
+do1_datasets = ds_client.datasets.get_all(datasite=do1_email)
+do1_datasets[0].describe()
+
+# Cell 5: Check DO2's datasets
+do2_datasets = ds_client.datasets.get_all(datasite=do2_email)
+do2_datasets[0].describe()
+
+# Cell 6: Get mock dataset URLs for local testing
+mock_dataset_urls = [do1_datasets[0].mock_url, do2_datasets[0].mock_url]
+print(mock_dataset_urls)
+```
+
+### Step 4: Propose the FL Project
+
+#### Clone FL Project
+
+The FL project uses [Flower](https://flower.ai/) for federated learning orchestration:
+
+```python
+# Cell 7: Download FL project code
+from pathlib import Path
+
+!mkdir -p /content/fl-diabetes-prediction
+!curl -sL https://github.com/khoaguin/fl-diabetes-prediction/archive/refs/heads/main.tar.gz | tar -xz --strip-components=1 -C /content/fl-diabetes-prediction
+
+SYFT_FLWR_PROJECT_PATH = Path("/content/fl-diabetes-prediction")
+print(f"Project at: {SYFT_FLWR_PROJECT_PATH}")
+```
+
+#### Bootstrap the Project
+
+Configure the project with participant emails:
+
+```python
+# Cell 8: Bootstrap with aggregator and datasites
+import syft_flwr
+
+!rm -rf {SYFT_FLWR_PROJECT_PATH / "main.py"}
+
+do_emails = [peer.email for peer in ds_client.peers]
+syft_flwr.bootstrap(
+    SYFT_FLWR_PROJECT_PATH,
+    aggregator=ds_email,
+    datasites=do_emails
+)
+print("Bootstrapped project successfully!")
+```
+
+#### Submit Jobs to Data Owners
+
+Send the training code to each data owner for approval:
+
+```python
+# Cell 9: Submit jobs
+!rm -rf {SYFT_FLWR_PROJECT_PATH / "fl_diabetes_prediction" / "__pycache__"}
+
+job_name = "fl-diabetes-training"
+
+# Submit to DO1
+ds_client.submit_python_job(
+    user=do1_email,
+    code_path=str(SYFT_FLWR_PROJECT_PATH),
+    job_name=job_name,
+)
+
+# Submit to DO2
+ds_client.submit_python_job(
+    user=do2_email,
+    code_path=str(SYFT_FLWR_PROJECT_PATH),
+    job_name=job_name,
+)
+
+ds_client.jobs
+```
+
+<Note>
+  The job contains the training code. Data owners can inspect it before approving execution on their private data.
+</Note>
+
+### Step 5: Data Owners Approve Jobs
+
+**Person 1** (in `do1.ipynb`) and **Person 2** (in `do2.ipynb`):
+
+```python
+# Cell 5: Check incoming jobs
+do_client.jobs
+
+# Cell 6: Review and approve the job
+do_client.jobs[0].approve()
+do_client.jobs
+
+# Cell 7: Process approved jobs (runs training on private data)
+do_client.process_approved_jobs()
+
+# Cell 8: Check job status
+do_client.jobs
+```
+
+**Both data owners must approve and process jobs before proceeding.**
+
+### Step 6: Run Federated Training
+
+**Person 3** (in `ds.ipynb`) runs the aggregation:
+
+```python
+# Cell 10: Install training dependencies
+!uv pip install \
+    "flwr-datasets>=0.5.0" \
+    "imblearn>=0.0" \
+    "loguru>=0.7.3" \
+    "pandas>=2.3.0" \
+    "ipywidgets>=8.1.7" \
+    "scikit-learn==1.7.1" \
+    "torch>=2.8.0" \
+    "ray==2.31.0"
+
+# Cell 11: Run aggregation server
+ds_email = ds_client.email
+syftbox_folder = f"/content/SyftBox_{ds_email}"
+
+!SYFTBOX_EMAIL="{ds_email}" SYFTBOX_FOLDER="{syftbox_folder}" \
+    uv run {str(SYFT_FLWR_PROJECT_PATH / "main.py")}
+
+# Cell 12: Check final job status
+ds_client.jobs
+```
+
+### Step 7: Clean Up
+
+When done, clean up SyftBox resources:
+
+```python
+# In DS notebook
+ds_client.delete_syftbox()
+
+# In DO1 and DO2 notebooks
+do_client.delete_syftbox()
+```
+
+## What Just Happened?
+
+You successfully trained a diabetes prediction model using federated learning:
+
+1. **Two data owners** each held a private partition in their Colab runtime
+2. **A data scientist** coordinated training without seeing raw data
+3. **Model updates** were aggregated using Flower framework
+4. **Privacy was preserved**—raw data never left the data owner's Colab environment
+5. **Real distribution**—notebooks ran on separate Google Cloud instances
+
+## Architecture
+
+```
+┌─────────────────────┐
+│  Data Scientist     │
+│  (Colab: ds.ipynb)  │
+│                     │
+│  - Submits jobs     │
+│  - Runs aggregator  │
+│  - Collects results │
+└──────────┬──────────┘
+           │
+           │ SyftBox Network
+           │ (Google Drive sync)
+           │
+    ┌──────┴──────┐
+    │             │
+┌───▼──────────┐  │  ┌──────────────┐
+│ Data Owner 1 │  └──│ Data Owner 2 │
+│ (Colab)      │     │ (Colab)      │
+│              │     │              │
+│ - Partition 0│     │ - Partition 1│
+│ - Approves   │     │ - Approves   │
+│ - Trains     │     │ - Trains     │
+└──────────────┘     └──────────────┘
+```
+
+## Communication Flow
+
+1. **Job Submission**: DS → (via SyftBox) → DO1, DO2
+2. **Job Approval**: DO1, DO2 → (via SyftBox) → DS
+3. **Training Rounds**:
+   - DS sends global model → DO1, DO2
+   - DO1, DO2 train locally on private data
+   - DO1, DO2 send model updates → DS
+   - DS aggregates updates
+4. **Results**: DS receives final model
+
+## Advantages Over Local Simulation
+
+| Feature | Local Simulation | Google Colab |
+|---------|------------------|---------------|
+| **Distribution** | Simulated (same machine) | Real (separate cloud instances) |
+| **Network** | Loopback | Internet |
+| **Installation** | Local Python setup | Zero installation |
+| **Collaboration** | Solo | Multi-party |
+| **Realism** | Testing | Production-like |
+| **Privacy** | Simulated isolation | Real isolation |
+
+## Use Cases
+
+### 1. Educational Demos
+
+Teach federated learning concepts:
+- Students use personal Google accounts
+- No complex setup or IT requirements
+- Visual demonstration of distributed training
+
+### 2. Hackathons
+
+Rapid prototyping for FL projects:
+- Form teams with different roles (DOs and DS)
+- Iterate quickly without infrastructure
+- Share notebooks via Google Drive
+
+### 3. Research Collaboration
+
+Multi-institution research:
+- Each institution uses their Google Workspace
+- Real privacy boundaries
+- Reproducible experiments via shared notebooks
+
+### 4. Client Demos
+
+Showcase federated learning to stakeholders:
+- Non-technical audience can participate
+- Visual proof of privacy preservation
+- No local installation for clients
+
+## Limitations
+
+<Warning>
+  Google Colab has usage limits:
+  - **Free tier**: Limited GPU hours, may disconnect after inactivity
+  - **Compute**: Lower performance than dedicated hardware
+  - **Storage**: Temporary runtime storage (lost when disconnected)
+  - **Network**: Subject to Google Cloud network policies
+</Warning>
+
+### Mitigations
+
+- **Colab Pro**: Upgrade for longer runtimes and better GPUs
+- **Save Checkpoints**: Regularly save model weights to Google Drive
+- **Keep Notebooks Active**: Prevent disconnection by running periodic cells
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Try Another Example" icon="flask" href="/examples/federated-analytics">
+    Run federated analytics on Google Colab.
+  </Card>
+  
+  <Card title="Local Simulation" icon="laptop" href="/examples/local-simulation">
+    Test on your local machine first.
+  </Card>
+  
+  <Card title="Production Deployment" icon="network-wired" href="/examples/syftbox">
+    Move to SyftBox network for real production use.
+  </Card>
+  
+  <Card title="API Reference" icon="code" href="/api/bootstrap">
+    Explore the Syft-Flwr API.
+  </Card>
+</CardGroup>
+
+## Resources
+
+- [Google Colab Documentation](https://colab.research.google.com/)
+- [Syft-Client Documentation](https://openmined.github.io/syft-client/)
+- [Flower Framework](https://flower.dev/docs/)
+- [OpenMined Community](https://openmined.org)
+- [Join Slack](https://slack.openmined.org) - #community-federated-learning channel

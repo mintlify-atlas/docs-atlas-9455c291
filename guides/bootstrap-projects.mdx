@@ -1,0 +1,297 @@
+---
+title: Bootstrapping FL Projects
+description: Learn how to bootstrap federated learning projects with Syft-Flwr, configure aggregators and datasites, and set up your environment
+---
+
+## Overview
+
+Bootstrapping is the process of configuring a Flower FL project to work with Syft-Flwr. This transforms a standard Flower project into a privacy-preserving federated learning setup that can run across multiple datasites.
+
+## Prerequisites
+
+Before bootstrapping, you need:
+
+- An existing Flower project with `pyproject.toml`
+- Valid datasite email addresses for participants
+- An aggregator (server) email address
+- Python 3.9 or higher
+
+## Basic Bootstrap Process
+
+### Using the CLI
+
+The simplest way to bootstrap a project is using the `syft_flwr` CLI:
+
+```bash
+syft_flwr bootstrap /path/to/flower-project \
+  --aggregator data-scientist@openmined.org \
+  --datasites data-owner-1@hospital.org,data-owner-2@clinic.com
+```
+
+### Interactive Mode
+
+If you don't provide the required arguments, the CLI will prompt you:
+
+```bash
+syft_flwr bootstrap /path/to/flower-project
+# Enter the datasite email of the Aggregator (Flower Server): data-scientist@openmined.org
+# Enter a comma-separated email of datasites of the Flower Clients: data-owner-1@hospital.org,data-owner-2@clinic.com
+```
+
+### Using Python API
+
+```python
+from pathlib import Path
+from syft_flwr.bootstrap import bootstrap
+
+project_dir = Path("./my-fl-project")
+aggregator = "data-scientist@openmined.org"
+datasites = [
+    "data-owner-1@hospital.org",
+    "data-owner-2@clinic.com"
+]
+
+bootstrap(
+    flwr_project_dir=project_dir,
+    aggregator=aggregator,
+    datasites=datasites
+)
+```
+
+## Transport Configuration
+
+Syft-Flwr supports two transport mechanisms:
+
+<Tabs>
+  <Tab title="SyftBox (Default)">
+    Uses local SyftBox client with RPC and end-to-end encryption.
+
+    ```python
+    bootstrap(
+        flwr_project_dir=project_dir,
+        aggregator=aggregator,
+        datasites=datasites,
+        transport="syftbox"  # Default
+    )
+    ```
+
+    **Features:**
+    - End-to-end encryption enabled by default
+    - Uses SyftBox Go client for file sync
+    - RPC communication via futures database
+    - Best for production deployments
+  </Tab>
+
+  <Tab title="P2P (Colab/Drive)">
+    Uses peer-to-peer file sync via Google Drive or OneDrive.
+
+    ```python
+    bootstrap(
+        flwr_project_dir=project_dir,
+        aggregator=aggregator,
+        datasites=datasites,
+        transport="p2p"
+    )
+    ```
+
+    **Features:**
+    - File-based message passing
+    - Works in Google Colab notebooks
+    - No encryption (relies on Drive security)
+    - Great for experimentation
+  </Tab>
+</Tabs>
+
+### Auto-Detection
+
+When `transport=None`, Syft-Flwr automatically detects the environment:
+
+```python
+bootstrap(
+    flwr_project_dir=project_dir,
+    aggregator=aggregator,
+    datasites=datasites,
+    transport=None  # Auto-detect
+)
+# In Colab: Uses "p2p"
+# Otherwise: Uses "syftbox"
+```
+
+## What Bootstrap Does
+
+### 1. Validates Project Structure
+
+Bootstrap verifies:
+- `pyproject.toml` exists in the project directory
+- `main.py` doesn't already exist (to avoid overwriting)
+- All email addresses are valid datasites
+
+```python
+# bootstrap.py:86-98
+def __validate_flwr_project_dir(flwr_project_dir: Union[str, Path]) -> Path:
+    flwr_pyproject = flwr_project_dir / "pyproject.toml"
+    flwr_main_py = flwr_project_dir / "main.py"
+
+    if flwr_main_py.exists():
+        raise FileExistsError(f"File '{flwr_main_py}' already exists")
+
+    if not flwr_project_dir.exists():
+        raise FileNotFoundError(f"Directory '{flwr_project_dir}' not found")
+
+    if not flwr_pyproject.exists():
+        raise FileNotFoundError(f"File '{flwr_pyproject}' not found")
+```
+
+### 2. Updates pyproject.toml
+
+Bootstrap adds Syft-Flwr configuration to your `pyproject.toml`:
+
+```toml
+[project]
+name = "my-fl-project"
+dependencies = [
+    "syft_flwr==0.1.0",  # Added automatically
+    # ... your existing dependencies
+]
+
+[tool.syft_flwr]
+app_name = "aggregator@example.com_my-fl-project_1234567890"
+datasites = ["client1@example.com", "client2@example.com"]
+aggregator = "aggregator@example.com"
+transport = "syftbox"  # or "p2p"
+
+[tool.flwr.app.config]
+partition-id = 0
+num-partitions = 1
+```
+
+### 3. Generates main.py
+
+Creates the entry point that orchestrates your FL workflow:
+
+```python
+# Generated main.py structure
+import sys
+from pathlib import Path
+from syft_flwr.run import syftbox_run_flwr_client, syftbox_run_flwr_server
+
+def main():
+    project_dir = Path(__file__).parent
+    
+    if "-s" in sys.argv or "--server" in sys.argv:
+        syftbox_run_flwr_server(project_dir)
+    else:
+        syftbox_run_flwr_client(project_dir)
+
+if __name__ == "__main__":
+    main()
+```
+
+## Project Structure
+
+After bootstrapping, your project structure looks like:
+
+```
+my-fl-project/
+├── pyproject.toml          # Updated with syft_flwr config
+├── main.py                 # Generated entry point
+├── my_fl_project/
+│   ├── __init__.py
+│   ├── server_app.py      # Your Flower ServerApp
+│   ├── client_app.py      # Your Flower ClientApp
+│   └── task.py            # Your ML logic
+└── README.md
+```
+
+## Email Validation
+
+Datasite and aggregator emails must be valid:
+
+```python
+# Valid examples
+aggregator = "data-scientist@openmined.org"  # ✓
+datasites = [
+    "client1@hospital.edu",  # ✓
+    "user@clinic.co.uk"      # ✓
+]
+
+# Invalid examples
+aggregator = "invalid-email"           # ✗ No @ or domain
+datasites = ["@example.com"]           # ✗ No local part
+```
+
+## Complete Example
+
+Here's a full workflow from creating a Flower project to bootstrapping:
+
+<Steps>
+  <Step title="Create Flower Project">
+    ```bash
+    flwr new my-fl-project --framework pandas
+    cd my-fl-project
+    ```
+  </Step>
+
+  <Step title="Bootstrap with Syft-Flwr">
+    ```bash
+    syft_flwr bootstrap . \
+      --aggregator data-scientist@openmined.org \
+      --datasites hospital1@med.org,hospital2@med.org
+    ```
+  </Step>
+
+  <Step title="Verify Configuration">
+    ```bash
+    cat pyproject.toml | grep syft_flwr
+    ls main.py  # Should exist now
+    ```
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+### "main.py already exists"
+
+Bootstrap won't overwrite existing `main.py`. Remove it first:
+
+```bash
+rm main.py
+syft_flwr bootstrap .
+```
+
+### "Invalid datasite" Error
+
+Ensure all emails match the pattern `name@domain.tld`:
+
+```python
+# bootstrap.py:131-136
+if not is_valid_datasite(aggregator):
+    raise ValueError(f"'{aggregator}' is not a valid datasite")
+
+for ds in datasites:
+    if not is_valid_datasite(ds):
+        raise ValueError(f"{ds} is not a valid datasite")
+```
+
+### "pyproject.toml not found"
+
+Make sure you're in a valid Flower project directory:
+
+```bash
+ls pyproject.toml  # Must exist
+cat pyproject.toml | grep "tool.flwr"  # Should have Flower config
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Run Simulations" icon="flask" href="/guides/run-simulations">
+    Test your bootstrapped project locally
+  </Card>
+  <Card title="Transport Configuration" icon="network-wired" href="/guides/transport-configuration">
+    Deep dive into transport options
+  </Card>
+  <Card title="Multi-Client Setup" icon="users" href="/guides/multi-client-setup">
+    Deploy across multiple datasites
+  </Card>
+</CardGroup>

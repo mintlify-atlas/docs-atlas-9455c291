@@ -1,0 +1,287 @@
+---
+title: "Diabetes Prediction"
+description: "Train a neural network for diabetes prediction using federated learning across distributed private datasets"
+---
+
+This example demonstrates a complete federated learning workflow for diabetes prediction. Multiple data owners collaboratively train a neural network without sharing their raw data, using the PIMA Indians Diabetes Database.
+
+<img src="https://github.com/OpenMined/syft-flwr/raw/main/notebooks/fl-diabetes-prediction/images/fltraining.gif" alt="FL Training Process" />
+
+## Overview
+
+The diabetes prediction example trains a deep neural network to predict diabetes onset based on medical measurements. The data is distributed across multiple data owners (hospitals, clinics) who want to collaborate on model training while keeping their patient data private.
+
+### Key Features
+
+- **Federated Learning**: Decentralized training across multiple clients using Flower framework
+- **Privacy-Preserving**: Data remains with data owners; only model updates are shared
+- **Imbalanced Data Handling**: Uses SMOTE (Synthetic Minority Over-sampling Technique) for class balancing
+- **Advanced Neural Architecture**: Deep neural network with batch normalization and dropout
+- **Multiple Deployment Modes**: Local simulation, Google Colab, and SyftBox distributed deployment
+
+## Architecture
+
+### Model Structure
+
+The neural network consists of:
+
+- **Input Layer**: 6 features (after preprocessing)
+- **Hidden Layers**:
+  - Layer 1: 32 units with BatchNorm, LeakyReLU, and Dropout (0.2)
+  - Layer 2: 24 units with BatchNorm, LeakyReLU, and Dropout (0.25)
+  - Layer 3: 16 units with BatchNorm and LeakyReLU
+- **Output Layer**: Single unit with Sigmoid activation (binary classification)
+
+```python
+class Net(nn.Module):
+    def __init__(self, input_dim=6):
+        super(Net, self).__init__()
+        self.layer1 = nn.Sequential(
+            nn.Linear(input_dim, 32),
+            nn.BatchNorm1d(32),
+            nn.LeakyReLU(0.1),
+            nn.Dropout(0.2),
+        )
+        self.layer2 = nn.Sequential(
+            nn.Linear(32, 24),
+            nn.BatchNorm1d(24),
+            nn.LeakyReLU(0.1),
+            nn.Dropout(0.25),
+        )
+        self.layer3 = nn.Sequential(
+            nn.Linear(24, 16),
+            nn.BatchNorm1d(16),
+            nn.LeakyReLU(0.1)
+        )
+        self.output_layer = nn.Sequential(
+            nn.Linear(16, 1),
+            nn.Sigmoid()
+        )
+```
+
+### Dataset
+
+**Source**: [PIMA Indians Diabetes Database](https://huggingface.co/datasets/khoaguin/pima-indians-diabetes-database)
+
+**Features**:
+- Pregnancies
+- Glucose
+- Blood Pressure
+- BMI (Body Mass Index)
+- Diabetes Pedigree Function
+- Age
+
+**Preprocessing**:
+- Removed `SkinThickness` and `Insulin` features
+- Imputed zero values with mean/median
+- Applied SMOTE for class balancing
+- Standardized features using StandardScaler
+
+**Partitioning**: IID (Independent and Identically Distributed) partitioning across clients
+
+## Setup
+
+### Clone the Project
+
+```bash
+git clone https://github.com/OpenMined/syft-flwr.git _tmp \
+    && mv _tmp/notebooks/fl-diabetes-prediction . \
+    && rm -rf _tmp && cd fl-diabetes-prediction
+```
+
+### Install Dependencies
+
+Assuming you have Python and [uv](https://docs.astral.sh/uv/) installed:
+
+```bash
+uv sync
+```
+
+This installs all required dependencies:
+- `flwr-datasets>=0.5.0` - Federated dataset utilities
+- `torch>=2.8.0` - Deep learning framework
+- `scikit-learn==1.6.1` - Machine learning utilities
+- `imblearn` - Imbalanced data handling (SMOTE)
+- `syft_flwr` - SyftBox integration
+
+## Running the Example
+
+### Local Simulation
+
+Run federated learning locally with simulated clients:
+
+```bash
+flwr run .
+```
+
+This will:
+- Simulate 2 supernodes (clients) locally
+- Run 2 federated learning rounds
+- Save model weights to `./weights/` directory
+
+**Configuration** (`pyproject.toml`):
+
+```toml
+[tool.flwr.app.config]
+num-server-rounds = 2        # Number of training rounds
+partition-id = 0             # Client partition ID
+num-partitions = 1           # Total number of partitions
+
+[tool.flwr.federations.local-simulation.options]
+num-supernodes = 2          # Number of simulated clients
+```
+
+### Jupyter Notebooks
+
+For interactive exploration, use the included notebooks:
+
+#### Local Setup
+
+The `local/` directory contains notebooks for running on a local SyftBox network:
+
+1. Start with `local/do1.ipynb` (Data Owner 1)
+2. Then run `local/do2.ipynb` (Data Owner 2)
+3. Finally open `local/ds.ipynb` (Data Scientist)
+
+Switch between notebooks as indicated to simulate the complete workflow.
+
+#### Distributed Setup
+
+The `distributed/` directory contains the same workflow but for real distributed deployment where each party runs on different machines using the SyftBox client.
+
+### Client Implementation
+
+The Flower client handles local training and evaluation:
+
+```python
+class FlowerClient(NumPyClient):
+    def __init__(self, net, trainloader, testloader):
+        self.net = net
+        self.trainloader = trainloader
+        self.testloader = testloader
+
+    def fit(self, parameters, config):
+        set_weights(self.net, parameters)
+        train(self.net, self.trainloader)
+        return get_weights(self.net), len(self.trainloader), {}
+
+    def evaluate(self, parameters, config):
+        set_weights(self.net, parameters)
+        loss, accuracy = evaluate(self.net, self.testloader)
+        return loss, len(self.testloader), {"accuracy": accuracy}
+```
+
+### Server Strategy
+
+The server uses `FedAvgWithModelSaving` strategy:
+
+```python
+strategy = FedAvgWithModelSaving(
+    save_path=save_path,
+    fraction_fit=1.0,
+    fraction_evaluate=1.0,
+    min_available_clients=1,
+    min_fit_clients=1,
+    min_evaluate_clients=1,
+    initial_parameters=params,
+    evaluate_metrics_aggregation_fn=weighted_average,
+)
+```
+
+**Aggregation Function**:
+
+```python
+def weighted_average(metrics):
+    accuracies = [num_examples * m["accuracy"] for num_examples, m in metrics]
+    examples = [num_examples for num_examples, _ in metrics]
+    return {"accuracy": sum(accuracies) / sum(examples)}
+```
+
+## Fault Tolerance
+
+The system handles client failures during federated learning:
+
+### Default Configuration (50% failure tolerance)
+
+- **Total Clients**: 2
+- **Minimum Required**: 1
+- **Failure Tolerance**: Can continue with 1 out of 2 clients
+
+### Configuration Parameters
+
+```toml
+[tool.flwr.app.config]
+min-available-clients = 1   # Start with at least 1 client
+min-fit-clients = 1          # Train with at least 1 client
+min-evaluate-clients = 1     # Evaluate with at least 1 client
+fraction-fit = 0.5           # Sample 50% of clients per round
+fraction-evaluate = 0.5      # Sample 50% of clients for evaluation
+```
+
+<Tip>
+  Using `fraction-fit < 1.0` ensures the server doesn't get stuck waiting for failed clients that were already sampled in a round.
+</Tip>
+
+## Training Details
+
+- **Optimizer**: Adam (lr=0.001, weight_decay=0.0005)
+- **Loss Function**: Binary Cross-Entropy (BCELoss)
+- **Batch Size**: 10 (training), full dataset (testing)
+- **Local Epochs**: 1 per round (configurable)
+- **Device Support**: CUDA, MPS (Apple Silicon), XPU, or CPU
+
+## Project Structure
+
+```
+fl-diabetes-prediction/
+├── fl_diabetes_prediction/
+│   ├── __init__.py
+│   ├── task.py           # Model, data loading, training logic
+│   ├── client_app.py     # Flower client implementation
+│   ├── server_app.py     # Flower server implementation
+│   └── main.py           # SyftBox entry point
+├── local/                # Local simulation notebooks
+│   ├── do1.ipynb
+│   ├── do2.ipynb
+│   └── ds.ipynb
+├── distributed/          # Distributed deployment notebooks
+├── distributed-gdrive/   # Google Colab notebooks
+├── pyproject.toml        # Project configuration
+├── weights/              # Saved model checkpoints
+└── README.md
+```
+
+## Deployment Options
+
+<CardGroup cols={2}>
+  <Card title="Local Simulation" icon="laptop" href="/examples/local-simulation">
+    Run everything on your local machine for development and testing.
+  </Card>
+  
+  <Card title="Google Colab" icon="cloud" href="/examples/google-drive">
+    Zero-setup federated learning using only Google Colab notebooks.
+  </Card>
+  
+  <Card title="SyftBox Network" icon="network-wired" href="/examples/syftbox">
+    Deploy across real distributed nodes using the SyftBox client.
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Try Federated Analytics" icon="chart-bar" href="/examples/federated-analytics">
+    Learn how to compute statistics on distributed data.
+  </Card>
+  
+  <Card title="Explore FedRAG" icon="magnifying-glass" href="/examples/fedrag">
+    Build privacy-preserving question answering systems.
+  </Card>
+</CardGroup>
+
+## Resources
+
+- [Flower Documentation](https://flower.ai/docs/)
+- [SyftBox Repository](https://github.com/OpenMined/syftbox)
+- [PIMA Indians Diabetes Database](https://huggingface.co/datasets/khoaguin/pima-indians-diabetes-database)
+- [OpenMined](https://www.openmined.org/)

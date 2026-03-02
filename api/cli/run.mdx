@@ -1,0 +1,351 @@
+---
+title: syft-flwr run
+description: Run a syft-flwr project in simulation mode with mock data
+---
+
+## Synopsis
+
+```bash
+syft-flwr run PROJECT_DIR [OPTIONS]
+```
+
+## Description
+
+The `run` command executes a bootstrapped syft-flwr project in **simulation mode** using mock datasets. This allows you to:
+
+- Test your federated learning workflow locally
+- Validate model training with sample data
+- Debug issues before deploying to distributed datasites
+- Simulate multiple clients with different datasets
+
+The simulation creates a temporary SyftBox network with all clients and the aggregator server, runs the federated learning workflow, and cleans up automatically when complete.
+
+## Arguments
+
+<ParamField path="PROJECT_DIR" type="path" required>
+  Path to a bootstrapped syft-flwr project directory.
+  
+  The directory must contain:
+  - `pyproject.toml` with syft-flwr configuration
+  - `main.py` (created by `syft-flwr bootstrap`)
+  
+  Both relative and absolute paths are supported. Paths with `~` are expanded.
+</ParamField>
+
+## Options
+
+<ParamField path="--mock-dataset-paths" type="string">
+  Comma-separated list of paths to mock datasets for each client.
+  
+  **Aliases:** `-m`
+  
+  **Format:** Comma-separated file system paths (e.g., `./data/client1,./data/client2`)
+  
+  **Requirements:**
+  - Number of paths must match the number of datasites configured in `pyproject.toml`
+  - All paths must exist on the file system
+  - Each path should contain the dataset for one client
+  
+  If not provided via flag, you'll be prompted interactively:
+  ```
+  Enter comma-separated paths to mock datasets: 
+  ```
+</ParamField>
+
+<ParamField path="--help" type="flag">
+  Display help information for the run command.
+  
+  **Aliases:** `-h`
+</ParamField>
+
+## Examples
+
+### Run with All Flags
+
+```bash
+syft-flwr run ./my-fl-project \
+  --mock-dataset-paths ./data/hospital1,./data/hospital2,./data/hospital3
+```
+
+**Output:**
+```
+Running syft_flwr project at '/path/to/my-fl-project'
+Mock dataset paths: ['./data/hospital1', './data/hospital2', './data/hospital3']
+[Simulation logs...]
+Simulation completed successfully ✅
+```
+
+### Run with Interactive Prompts
+
+```bash
+syft-flwr run ./my-fl-project
+```
+
+**Interactive session:**
+```
+Enter comma-separated paths to mock datasets: ./data/client1,./data/client2
+Running syft_flwr project at '/path/to/my-fl-project'
+Mock dataset paths: ['./data/client1', './data/client2']
+[Simulation logs...]
+Simulation completed successfully ✅
+```
+
+### Run with Short Flag
+
+```bash
+syft-flwr run ./diabetes-fl -m ~/datasets/do1,~/datasets/do2
+```
+
+### Run with Absolute Paths
+
+```bash
+syft-flwr run ~/projects/fl/diabetes-prediction \
+  --mock-dataset-paths /data/samples/client1,/data/samples/client2
+```
+
+### Run with Current Directory
+
+```bash
+cd my-fl-project
+syft-flwr run . -m ../test-data/client1,../test-data/client2
+```
+
+## How It Works
+
+### Simulation Process
+
+1. **Validation**: Validates project structure and dataset paths
+2. **Setup**: Creates temporary SyftBox network directory
+3. **Client Creation**: Initializes mock RDS clients for each datasite
+4. **Encryption Bootstrap**: Sets up E2E encryption keys (if enabled)
+5. **Parallel Execution**: Runs server and all clients concurrently
+6. **Logging**: Captures output from each participant
+7. **Cleanup**: Removes temporary directories and configuration
+
+### Temporary Environment
+
+During simulation, the following temporary directories are created:
+
+```
+/tmp/
+  ├── my-fl-project/           # Simulated SyftBox network
+  │   ├── ds@example.com/      # Aggregator workspace
+  │   ├── do1@example.com/     # Client 1 workspace  
+  │   └── do2@example.com/     # Client 2 workspace
+  └── .syftbox/                # Encryption keys and config
+      ├── ds@example.com/
+      ├── do1@example.com/
+      └── do2@example.com/
+```
+
+All temporary files are automatically deleted when simulation completes.
+
+### Simulation Logs
+
+Logs are written to `PROJECT_DIR/simulation_logs/`:
+
+```
+my-fl-project/
+  └── simulation_logs/
+      ├── ds@example.com.log      # Aggregator logs
+      ├── do1@example.com.log     # Client 1 logs
+      └── do2@example.com.log     # Client 2 logs
+```
+
+These logs persist after simulation for debugging.
+
+## Environment Variables
+
+The run command sets environment variables for each participant:
+
+<ParamField path="SYFTBOX_CLIENT_CONFIG_PATH" type="string">
+  Path to the participant's SyftBox client configuration file.
+  
+  Set automatically for each client and server process.
+</ParamField>
+
+<ParamField path="DATA_DIR" type="string">
+  Path to the mock dataset for each client.
+  
+  Set from the corresponding `--mock-dataset-paths` value.
+</ParamField>
+
+<ParamField path="SYFT_FLWR_ENCRYPTION_ENABLED" type="boolean" default="true">
+  Enable or disable E2E encryption during simulation.
+  
+  Set to `false` to disable encryption:
+  ```bash
+  SYFT_FLWR_ENCRYPTION_ENABLED=false syft-flwr run ./my-project -m ./data1,./data2
+  ```
+</ParamField>
+
+<ParamField path="SYFT_FLWR_SKIP_MODULE_CHECK" type="boolean" default="false">
+  Skip module validation during project loading.
+  
+  Useful for testing. Not recommended for production use.
+</ParamField>
+
+## Validation
+
+The command validates:
+
+1. **Project directory exists** and is a directory
+2. **pyproject.toml exists** with valid syft-flwr configuration
+3. **main.py exists** in the project directory
+4. **All mock dataset paths exist** on the file system
+5. **Number of datasets matches** number of configured datasites
+
+## Error Handling
+
+### Project Not Bootstrapped
+
+```bash
+$ syft-flwr run ./my-project
+Error: main.py not found at ./my-project
+```
+
+**Solution:** Bootstrap the project first:
+```bash
+syft-flwr bootstrap ./my-project --aggregator ds@example.com --datasites do1@example.com,do2@example.com
+```
+
+### Dataset Path Does Not Exist
+
+```bash
+$ syft-flwr run ./my-project -m ./nonexistent,./data
+Error: Mock dataset path ./nonexistent does not exist
+```
+
+**Solution:** Ensure all dataset paths exist:
+```bash
+mkdir -p ./data/client1 ./data/client2
+syft-flwr run ./my-project -m ./data/client1,./data/client2
+```
+
+### Dataset Count Mismatch
+
+```bash
+$ syft-flwr run ./my-project -m ./data/client1
+# When pyproject.toml has 2 datasites configured
+Error: Expected 2 dataset paths, got 1
+```
+
+**Solution:** Provide one dataset path per datasite.
+
+### Simulation Failed
+
+```bash
+$ syft-flwr run ./my-project -m ./data1,./data2
+Running syft_flwr project at './my-project'
+Mock dataset paths: ['./data1', './data2']
+[Simulation logs...]
+Simulation failed ❌
+Error: [error details]
+```
+
+**Solution:** Check simulation logs in `./my-project/simulation_logs/` for details.
+
+## Async Execution
+
+In environments with an existing event loop (e.g., Jupyter notebooks), the run command returns an asyncio Task:
+
+```python
+import asyncio
+from syft_flwr.run_simulation import run
+
+# Returns a Task in Jupyter
+task = run("./my-project", ["./data1", "./data2"])
+
+# Await the task
+result = await task
+print(f"Success: {result}")
+```
+
+In regular scripts, execution is synchronous and returns a boolean.
+
+## Encryption
+
+By default, the simulation uses **end-to-end encryption** with:
+
+- Automatic key generation for all participants
+- DID (Decentralized Identifier) document creation
+- Encrypted message passing between clients and server
+
+To disable encryption for debugging:
+
+```bash
+SYFT_FLWR_ENCRYPTION_ENABLED=false syft-flwr run ./my-project -m ./data1,./data2
+```
+
+You'll see:
+```
+⚠️ Encryption disabled - skipping key bootstrap
+```
+
+## Performance
+
+### Parallel Execution
+
+All clients run in parallel using asyncio, with the aggregator server coordinating the workflow. The simulation completes when the server process finishes.
+
+### Resource Usage
+
+Each client runs as a separate Python subprocess. For N clients:
+- **Processes**: N + 1 (clients + server)
+- **Memory**: Depends on model size and dataset
+- **Disk**: Temporary files for communication and logs
+
+## Exit Codes
+
+- `0`: Simulation succeeded
+- `1`: Simulation failed (validation error, runtime error, etc.)
+
+## Best Practices
+
+### Dataset Preparation
+
+Organize mock datasets clearly:
+
+```bash
+my-fl-project/
+  ├── mock-data/
+  │   ├── client1/
+  │   │   └── dataset.csv
+  │   ├── client2/
+  │   │   └── dataset.csv
+  │   └── client3/
+  │       └── dataset.csv
+  ├── main.py
+  └── pyproject.toml
+```
+
+Run from project root:
+```bash
+syft-flwr run . -m mock-data/client1,mock-data/client2,mock-data/client3
+```
+
+### Testing Before Deployment
+
+Always run simulations before deploying to distributed datasites:
+
+1. Create representative mock datasets
+2. Run simulation multiple times
+3. Review logs for errors
+4. Verify model training converges
+5. Check aggregation results
+
+### Debugging
+
+Enable detailed logging in your `main.py`:
+
+```python
+import logging
+logging.basicConfig(level=logging.DEBUG)
+```
+
+Logs will appear in `simulation_logs/`.
+
+## See Also
+
+- [bootstrap command](/api/cli/bootstrap) - Bootstrap a Flower project for syft-flwr
+- [CLI Overview](/api/cli/overview) - Complete CLI reference

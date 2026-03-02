@@ -1,0 +1,160 @@
+---
+title: Transport Layer Overview
+description: Understanding Syft-Flwr's pluggable transport abstraction for federated learning communication
+---
+
+Syft-Flwr provides a flexible transport layer that enables federated learning across different communication backends. The transport abstraction allows seamless switching between local SyftBox installations and P2P cloud-based synchronization.
+
+## Architecture
+
+The transport layer consists of three core abstractions:
+
+1. **Client Protocol** (`SyftFlwrClient`) - Unified interface for accessing datasite information
+2. **RPC Protocol** (`SyftFlwrRpc`) - Message sending and response retrieval
+3. **Events Protocol** (`SyftFlwrEvents`) - Asynchronous message handling and processing
+
+Each abstraction has multiple implementations that work together to support different deployment scenarios.
+
+## Transport Modes
+
+### SyftBox Transport (Default)
+
+**Best for:** Local development, on-premise deployments, high-security scenarios
+
+```python
+from syft_flwr import bootstrap
+
+bootstrap(
+    flwr_project_dir="./my_fl_project",
+    aggregator="aggregator@example.com",
+    datasites=["data_owner1@example.com", "data_owner2@example.com"],
+    transport="syftbox"  # Uses local SyftBox client
+)
+```
+
+**Features:**
+- Full RPC/crypto/event stack via `syft_core.Client`
+- End-to-end encryption with X3DH key exchange
+- Filesystem-based message routing
+- Watchdog file monitoring for real-time events
+- Futures database for response tracking
+
+**Components:**
+- Client: `SyftCoreClient` (wraps `syft_core.Client`)
+- RPC: `SyftRpc` (uses `syft_rpc` library)
+- Events: `SyftEvents` (uses `syft_event` library)
+
+### P2P Transport
+
+**Best for:** Cloud deployments, Google Colab, environments without local SyftBox
+
+```python
+from syft_flwr import bootstrap
+
+bootstrap(
+    flwr_project_dir="./my_fl_project",
+    aggregator="aggregator@example.com",
+    datasites=["data_owner1@example.com", "data_owner2@example.com"],
+    transport="p2p"  # Uses Google Drive sync
+)
+```
+
+**Features:**
+- Direct Google Drive API integration via `GDriveFileIO`
+- File-based message passing (`.request` and `.response` files)
+- No local filesystem dependencies
+- Polling-based event handling
+- Access control via Google Drive permissions
+
+**Components:**
+- Client: `SyftP2PClient` (lightweight, email-based)
+- RPC: `P2PFileRpc` (file-based messaging)
+- Events: `P2PFileEvents` (polling-based)
+
+## Factory Functions
+
+Syft-Flwr automatically detects the appropriate transport implementation:
+
+<CodeGroup>
+```python Client Creation
+from syft_flwr.client import create_client
+
+# Auto-detect from environment or config
+client = create_client()
+
+# Explicit transport selection
+client = create_client(transport="syftbox")
+client = create_client(transport="p2p", email="user@example.com")
+
+# From project directory (reads pyproject.toml)
+client = create_client(project_dir="./my_fl_project")
+```
+
+```python RPC Creation
+from syft_flwr.rpc import create_rpc
+
+# Auto-detect from client type
+rpc = create_rpc(client=client, app_name="flwr/my_app")
+
+# Returns SyftRpc for SyftCoreClient
+# Returns P2PFileRpc for SyftP2PClient
+```
+
+```python Events Creation
+from syft_flwr.events import create_events_watcher
+
+# Auto-detect from client type
+events = create_events_watcher(
+    app_name="flwr/my_app",
+    client=client
+)
+
+# Returns SyftEvents for SyftCoreClient
+# Returns P2PFileEvents for SyftP2PClient
+```
+</CodeGroup>
+
+## Transport Detection Order
+
+When no transport is specified, Syft-Flwr uses this detection order:
+
+1. **Explicit `transport` parameter** - Highest priority
+2. **Project config** - Read from `pyproject.toml` `[tool.syft_flwr]` section
+3. **Local SyftBox** - Check for `syft_core` config file
+4. **Error** - Cannot auto-detect, must specify transport
+
+## Configuration
+
+Transport configuration is stored in `pyproject.toml`:
+
+```toml
+[tool.syft_flwr]
+transport = "syftbox"  # or "p2p"
+aggregator = "aggregator@example.com"
+datasites = ["do1@example.com", "do2@example.com"]
+app_name = "my_fl_app_1234567890"
+```
+
+## Encryption Support
+
+| Transport | Encryption | Method |
+|-----------|------------|--------|
+| SyftBox | ✅ Supported | X3DH + AES-256-GCM via `syft_crypto` |
+| P2P | ⚠️ Planned | Currently relies on Google Drive access control |
+
+To disable encryption in SyftBox mode:
+
+```bash
+export SYFT_FLWR_ENCRYPTION_ENABLED=false
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="SyftBox Transport" icon="box" href="/api/transport/syftbox">
+    Learn about the traditional SyftBox client with full RPC/crypto stack
+  </Card>
+  <Card title="P2P Transport" icon="cloud" href="/api/transport/p2p">
+    Explore cloud-based P2P synchronization for Colab and remote deployments
+  </Card>
+</CardGroup>

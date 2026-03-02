@@ -1,0 +1,233 @@
+---
+title: syft-flwr bootstrap
+description: Convert a Flower project to syft-flwr with datasite configuration
+---
+
+## Synopsis
+
+```bash
+syft-flwr bootstrap PROJECT_DIR [OPTIONS]
+```
+
+## Description
+
+The `bootstrap` command converts an existing Flower project into a syft-flwr project by:
+
+1. Validating the Flower project structure
+2. Adding syft-flwr configuration to `pyproject.toml`
+3. Creating a `main.py` file for running the federated learning workflow
+4. Configuring datasites (data owners) and aggregator (data scientist)
+5. Setting up the communication transport (SyftBox or P2P)
+
+After bootstrapping, your project is ready to run federated learning with file-based communication.
+
+## Arguments
+
+<ParamField path="PROJECT_DIR" type="path" required>
+  Path to a Flower project directory. Must contain a valid `pyproject.toml` file.
+  
+  The directory is validated to ensure:
+  - The directory exists
+  - `pyproject.toml` exists in the directory
+  - `main.py` does not already exist (to prevent overwriting)
+</ParamField>
+
+## Options
+
+<ParamField path="--aggregator" type="string">
+  Datasite email of the Flower Server (aggregator/data scientist).
+  
+  **Aliases:** `-a`, `--server`, `-s`
+  
+  **Format:** Valid email address (e.g., `ds@example.com`)
+  
+  If not provided via flag, you'll be prompted interactively:
+  ```
+  Enter the datasite email of the Aggregator (Flower Server): 
+  ```
+</ParamField>
+
+<ParamField path="--datasites" type="string">
+  Comma-separated list of datasite emails for Flower Clients (data owners).
+  
+  **Aliases:** `-d`
+  
+  **Format:** Comma-separated email addresses (e.g., `do1@example.com,do2@example.com`)
+  
+  If not provided via flag, you'll be prompted interactively:
+  ```
+  Enter a comma-separated email of datasites of the Flower Clients: 
+  ```
+</ParamField>
+
+<ParamField path="--help" type="flag">
+  Display help information for the bootstrap command.
+  
+  **Aliases:** `-h`
+</ParamField>
+
+## Examples
+
+### Bootstrap with All Flags
+
+```bash
+syft-flwr bootstrap ./my-fl-project \
+  --aggregator ds@example.com \
+  --datasites do1@example.com,do2@example.com
+```
+
+**Output:**
+```
+Bootstrapping project at '/path/to/my-fl-project'
+Aggregator: ds@example.com
+Datasites: ['do1@example.com', 'do2@example.com']
+Bootstrapped project at '/path/to/my-fl-project'
+```
+
+### Bootstrap with Interactive Prompts
+
+```bash
+syft-flwr bootstrap ./my-fl-project
+```
+
+**Interactive session:**
+```
+Enter the datasite email of the Aggregator (Flower Server): ds@example.com
+Enter a comma-separated email of datasites of the Flower Clients: do1@example.com,do2@example.com
+Bootstrapping project at '/path/to/my-fl-project'
+Aggregator: ds@example.com
+Datasites: ['do1@example.com', 'do2@example.com']
+Bootstrapped project at '/path/to/my-fl-project'
+```
+
+### Bootstrap with Short Flags
+
+```bash
+syft-flwr bootstrap ./diabetes-fl \
+  -s data.scientist@university.edu \
+  -d hospital1@clinic.org,hospital2@clinic.org,hospital3@clinic.org
+```
+
+### Bootstrap with Absolute Path
+
+```bash
+syft-flwr bootstrap ~/projects/federated-learning/diabetes-prediction \
+  --aggregator researcher@lab.edu \
+  --datasites patient1@provider.com,patient2@provider.com
+```
+
+## What Gets Modified
+
+### pyproject.toml Changes
+
+The bootstrap command modifies your `pyproject.toml` file:
+
+1. **Adds syft-flwr dependency:**
+   ```toml
+   [project]
+   dependencies = [
+       "syft_flwr==0.5.0",
+       # ... other dependencies
+   ]
+   ```
+
+2. **Adds syft-flwr configuration:**
+   ```toml
+   [tool.syft_flwr]
+   app_name = "ds@example.com_my-project_1735823400"
+   datasites = ["do1@example.com", "do2@example.com"]
+   aggregator = "ds@example.com"
+   transport = "syftbox"
+   ```
+
+3. **Sets Flower partition config:**
+   ```toml
+   [tool.flwr.app.config]
+   partition-id = 0
+   num-partitions = 1
+   ```
+
+### main.py Creation
+
+A new `main.py` file is created from a template to orchestrate the federated learning workflow. This file handles:
+
+- Loading project configuration
+- Managing client/server communication
+- Coordinating the FL training process
+
+## Transport Types
+
+The transport type is automatically detected:
+
+- **`syftbox`** (default): Local SyftBox with RPC and encryption
+  - Used on standard environments
+  - Requires SyftBox client installation
+  
+- **`p2p`**: Peer-to-peer sync via Google Drive/OneDrive
+  - Automatically selected in Google Colab
+  - Suitable for distributed environments without SyftBox
+
+## Validation
+
+The command validates:
+
+1. **Project directory exists**
+2. **pyproject.toml exists** in the directory
+3. **main.py does not exist** (prevents overwriting)
+4. **Aggregator email is valid** (format validation)
+5. **All datasite emails are valid** (format validation)
+
+## Error Handling
+
+### Directory Not Found
+
+```bash
+$ syft-flwr bootstrap ./nonexistent
+Error: Directory './nonexistent' not found
+```
+
+### Missing pyproject.toml
+
+```bash
+$ syft-flwr bootstrap ./empty-dir
+Error: File './empty-dir/pyproject.toml' not found
+```
+
+### main.py Already Exists
+
+```bash
+$ syft-flwr bootstrap ./already-bootstrapped
+Error: File './already-bootstrapped/main.py' already exists
+```
+
+### Invalid Email Format
+
+```bash
+$ syft-flwr bootstrap ./my-project --aggregator invalid-email
+Error: 'invalid-email' is not a valid datasite
+```
+
+## Exit Codes
+
+- `0`: Bootstrap succeeded
+- `1`: Bootstrap failed (validation error, file system error, etc.)
+
+## Next Steps
+
+After bootstrapping:
+
+1. **Review the configuration** in `pyproject.toml`
+2. **Install dependencies:**
+   ```bash
+   cd my-fl-project
+   pip install -e .
+   ```
+3. **Run a simulation** to test:
+   ```bash
+   syft-flwr run . --mock-dataset-paths ./data/client1,./data/client2
+   ```
+
+## See Also
+
+- [run command](/api/cli/run) - Run the bootstrapped project in simulation mode
+- [CLI Overview](/api/cli/overview) - Complete CLI reference

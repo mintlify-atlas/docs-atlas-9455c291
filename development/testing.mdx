@@ -1,0 +1,283 @@
+---
+title: "Testing"
+description: "Run and write tests for Syft-Flwr"
+---
+
+Syft-Flwr uses pytest for testing, with separate test suites for unit tests, in-memory integration tests, and Google Drive integration tests.
+
+## Test Organization
+
+Tests are organized into different categories:
+
+```
+tests/
+├── unit/                   # Fast unit tests (run in CI)
+└── integration/
+    ├── simulation/         # In-memory integration tests (run in CI)
+    └── syft-client/        # Google Drive integration tests (manual)
+```
+
+## Running Tests
+
+### Unit Tests
+
+Unit tests are fast and run automatically in CI. They test individual components in isolation.
+
+<CodeGroup>
+```bash Using just (recommended)
+just test-unit
+```
+
+```bash Using pytest directly
+uv run pytest tests/ -v -n auto --ignore=tests/integration/syft-client
+```
+
+```bash With coverage
+uv run pytest tests/ -v -n auto --cov=syft_flwr --cov-report=term-missing --ignore=tests/integration/syft-client
+```
+</CodeGroup>
+
+### In-Memory Integration Tests
+
+These integration tests use in-memory simulation and don't require Google OAuth credentials. They run in CI.
+
+<CodeGroup>
+```bash Using just (recommended)
+just test-integration-inmemory
+```
+
+```bash Using pytest directly
+bash scripts/test.sh integration-inmemory
+```
+</CodeGroup>
+
+### Google Drive Integration Tests
+
+These tests require Google OAuth credentials and test the full federated learning workflow using Google Drive as the transport layer. They are marked as `slow` and must be run manually.
+
+<Warning>
+Google Drive integration tests require OAuth credentials. See the Google OAuth Setup section in the [Development Setup](/development/setup) guide for configuration instructions.
+</Warning>
+
+<CodeGroup>
+```bash Using just (recommended)
+just test-integration-gdrive
+```
+
+```bash Using pytest directly
+bash scripts/test.sh integration-gdrive
+```
+
+```bash Run specific test files
+# Single Data Owner test
+pytest tests/integration/syft-client/fl_diabetes_one_do_test.py -v -s
+
+# Two Data Owners test
+pytest tests/integration/syft-client/fl_diabetes_two_dos_test.py -v -s
+```
+</CodeGroup>
+
+### All Tests
+
+Run the complete test suite including unit and integration tests:
+
+```bash
+just test
+```
+
+## Test Markers
+
+Tests use pytest markers to categorize and filter test execution:
+
+- **`slow`**: Integration tests with Google Drive (excluded from CI)
+
+### Running Tests by Marker
+
+<CodeGroup>
+```bash Run only slow tests
+pytest -m slow -v -s
+```
+
+```bash Skip slow tests
+pytest -m "not slow" -v
+```
+</CodeGroup>
+
+## Writing Tests
+
+### Test Structure
+
+Follow these conventions when writing tests:
+
+```python
+import pytest
+from syft_flwr import YourModule
+
+def test_basic_functionality():
+    """Test description."""
+    result = YourModule.function()
+    assert result == expected_value
+
+@pytest.mark.slow
+def test_integration_with_gdrive():
+    """Integration test requiring Google OAuth."""
+    # Test implementation
+    pass
+
+@pytest.fixture
+def sample_data():
+    """Reusable test fixture."""
+    return {"key": "value"}
+
+def test_with_fixture(sample_data):
+    """Test using a fixture."""
+    assert sample_data["key"] == "value"
+```
+
+### Best Practices
+
+<AccordionGroup>
+  <Accordion title="Unit Tests">
+    - Test one thing at a time
+    - Use descriptive test names that explain what is being tested
+    - Keep tests fast and isolated
+    - Mock external dependencies
+    - Use fixtures for common test data
+  </Accordion>
+  
+  <Accordion title="Integration Tests">
+    - Mark slow tests with `@pytest.mark.slow`
+    - Test real-world scenarios and workflows
+    - Clean up resources after tests
+    - Document any required setup or credentials
+  </Accordion>
+  
+  <Accordion title="Async Tests">
+    - Use `@pytest.mark.asyncio` for async tests
+    - Ensure proper cleanup of async resources
+    - Use `pytest-asyncio` fixtures when needed
+  </Accordion>
+</AccordionGroup>
+
+## CI/CD Testing
+
+### Automated Tests (GitHub Actions)
+
+Unit and in-memory integration tests run automatically on every push/PR to main branch:
+
+- **Operating Systems**: Ubuntu, Windows, macOS
+- **Python Versions**: 3.10, 3.11, 3.12
+
+### Manual Integration Tests
+
+Google Drive integration tests can be triggered manually via GitHub Actions. Required secrets must be configured in repository settings:
+
+| Secret Name | Content |
+|-------------|---------|  
+| `GDRIVE_CRED_DO1` | Contents of `do1.json` |
+| `GDRIVE_CRED_DO2` | Contents of `do2.json` |
+| `GDRIVE_CRED_DS` | Contents of `ds.json` |
+| `GDRIVE_TOKEN_DO1` | Contents of `token_do1.json` |
+| `GDRIVE_TOKEN_DO2` | Contents of `token_do2.json` |
+| `GDRIVE_TOKEN_DS` | Contents of `token_ds.json` |
+| `EMAIL_DO1` | DO1 email address |
+| `EMAIL_DO2` | DO2 email address |
+| `EMAIL_DS` | DS email address |
+
+<Steps>
+  <Step title="Navigate to Actions">
+    Go to the GitHub repository → Actions tab
+  </Step>
+  
+  <Step title="Select workflow">
+    Select "Integration Tests (Google Drive)" workflow
+  </Step>
+  
+  <Step title="Run workflow">
+    Click "Run workflow" button to trigger manual execution
+  </Step>
+</Steps>
+
+## Test Configuration
+
+### pytest Configuration
+
+The project's `pyproject.toml` includes pytest configuration:
+
+```toml
+[tool.pytest.ini_options]
+markers = [
+    "slow: marks tests as slow (integration tests with Google Drive)",
+]
+```
+
+### Parallel Test Execution
+
+Unit tests use `pytest-xdist` for parallel execution to speed up test runs:
+
+```bash
+# Automatically detect CPU count and parallelize
+pytest -n auto
+
+# Use specific number of workers
+pytest -n 4
+```
+
+## Coverage Reports
+
+Generate code coverage reports to identify untested code:
+
+<CodeGroup>
+```bash Terminal output
+uv run pytest tests/ --cov=syft_flwr --cov-report=term-missing
+```
+
+```bash HTML report
+uv run pytest tests/ --cov=syft_flwr --cov-report=html
+open htmlcov/index.html
+```
+
+```bash XML report (for CI)
+uv run pytest tests/ --cov=syft_flwr --cov-report=xml
+```
+</CodeGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Tests fail with import errors">
+    Ensure you've installed the package in editable mode:
+    
+    ```bash
+    uv pip install -e .
+    uv sync --group dev
+    ```
+  </Accordion>
+  
+  <Accordion title="Google Drive tests fail with OAuth errors">
+    1. Verify `credentials/.env` is configured correctly
+    2. Check that OAuth credentials files exist in `credentials/`
+    3. Ensure the OAuth app is published (not in testing mode)
+    4. Re-authenticate by deleting token files and running tests again
+  </Accordion>
+  
+  <Accordion title="Tests hang or timeout">
+    - Check for deadlocks in async code
+    - Increase timeout values for slow operations
+    - Ensure proper cleanup of resources
+    - Run tests with verbose output: `pytest -v -s`
+  </Accordion>
+  
+  <Accordion title="Parallel tests fail but sequential tests pass">
+    - Check for shared state between tests
+    - Use fixtures to isolate test data
+    - Avoid using global variables
+    - Run with `-n 1` to disable parallelization for debugging
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+- Learn about [Code Quality](/development/code-quality) tools and standards
+- Understand the [Release Process](/development/releasing)
+- Review [Versioning](/development/versioning) strategy

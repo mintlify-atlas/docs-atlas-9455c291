@@ -1,0 +1,413 @@
+---
+title: Installation
+description: Install Syft-Flwr and set up your development environment for federated learning
+---
+
+## System requirements
+
+Before installing Syft-Flwr, ensure your system meets these requirements:
+
+- **Python**: 3.12 or higher (< 3.14)
+- **Operating System**: Linux, macOS, or Windows
+- **Package Manager**: pip or [uv](https://docs.astral.sh/uv/) (recommended)
+
+<Note>
+  For Google Colab, all dependencies are pre-installed. You only need to install Syft-Flwr.
+</Note>
+
+## Installation methods
+
+<Tabs>
+  <Tab title="PyPI (recommended)">
+    Install the latest stable release from PyPI:
+
+    ```bash
+    pip install syft-flwr
+    ```
+
+    Or using uv (faster):
+
+    ```bash
+    uv pip install syft-flwr
+    ```
+
+    Verify the installation:
+
+    ```python
+    import syft_flwr
+    print(syft_flwr.__version__)
+    # Output: 0.5.0
+    ```
+  </Tab>
+
+  <Tab title="From source (latest)">
+    Install the latest development version from GitHub:
+
+    ```bash
+    pip install "git+https://github.com/OpenMined/syft-flwr.git@main"
+    ```
+
+    Or using uv:
+
+    ```bash
+    uv pip install "git+https://github.com/OpenMined/syft-flwr.git@main"
+    ```
+
+    This is useful for testing unreleased features or bug fixes.
+  </Tab>
+
+  <Tab title="Development setup">
+    For contributing or local development:
+
+    ```bash
+    # Clone the repository
+    git clone https://github.com/OpenMined/syft-flwr.git
+    cd syft-flwr
+
+    # Create virtual environment
+    uv venv .venv
+    source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+    # Install in editable mode with dev dependencies
+    uv pip install -e .
+    uv sync --group dev
+    ```
+
+    See the [development guide](/development/overview) for more details.
+  </Tab>
+
+  <Tab title="Google Colab">
+    In a Colab notebook cell:
+
+    ```python
+    !uv pip install -q "git+https://github.com/OpenMined/syft-flwr.git@main"
+    ```
+
+    Or for the PyPI version:
+
+    ```python
+    !uv pip install -q syft-flwr
+    ```
+
+    The `-q` flag suppresses installation output.
+  </Tab>
+</Tabs>
+
+## Dependencies
+
+Syft-Flwr automatically installs these core dependencies:
+
+<AccordionGroup>
+  <Accordion title="Federated learning framework">
+    - `flwr[simulation]==1.25.0` - Flower federated learning framework
+    - `flwr-datasets[vision]>=0.5.0` - Federated datasets
+  </Accordion>
+
+  <Accordion title="Syft ecosystem">
+    - `syft-rds>=0.5.0` - Remote data science runtime
+    - `syft-client>=0.1.94` - Syft client for data governance
+    - `syft-dataset>=0.1.5` - Dataset management
+    - `syft-job>=0.1.23` - Job orchestration
+  </Accordion>
+
+  <Accordion title="Utilities">
+    - `loguru>=0.7.3` - Logging
+    - `safetensors>=0.7.0` - Model serialization
+    - `huggingface-hub>=0.26.0` - Dataset downloads
+    - `tomli>=2.3.0` - TOML parsing
+    - `typing-extensions>=4.13.0` - Type hints
+  </Accordion>
+</AccordionGroup>
+
+## Optional dependencies
+
+For ML model training, you'll need additional packages:
+
+<CodeGroup>
+
+```bash PyTorch (recommended)
+pip install torch>=2.0.0
+```
+
+```bash Data processing
+pip install pandas>=2.3.0 scikit-learn>=1.7.1 imblearn>=0.0
+```
+
+```bash Jupyter notebooks
+pip install jupyterlab ipykernel>=6.30.1 ipywidgets>=8.1.7
+```
+
+```bash All ML dependencies
+pip install torch>=2.0.0 pandas>=2.3.0 scikit-learn>=1.7.1 \
+    imblearn>=0.0 jupyterlab ipykernel ipywidgets
+```
+
+</CodeGroup>
+
+<Tip>
+  The quickstart examples use PyTorch for model training. Install it before running those examples.
+</Tip>
+
+## Verify installation
+
+Run this Python script to verify everything is installed correctly:
+
+```python
+import syft_flwr
+import syft_client as sc
+import flwr
+
+print(f"Syft-Flwr version: {syft_flwr.__version__}")
+print(f"Syft-Client version: {sc.__version__}")
+print(f"Flower version: {flwr.__version__}")
+
+# Test bootstrap function
+from syft_flwr import bootstrap
+print("✅ All imports successful!")
+```
+
+Expected output:
+
+```
+Syft-Flwr version: 0.5.0
+Syft-Client version: 0.1.94
+Flower version: 1.25.0
+✅ All imports successful!
+```
+
+## Environment setup
+
+### For local development
+
+If running locally with SyftBox:
+
+<Steps>
+  <Step title="Install SyftBox">
+    Follow the [SyftBox installation guide](https://syftbox.net/) to set up the local sync daemon.
+  </Step>
+
+  <Step title="Set environment variables">
+    ```bash
+    export SYFTBOX_EMAIL="your-email@example.com"
+    export SYFTBOX_FOLDER="$HOME/.syftbox"
+    ```
+  </Step>
+
+  <Step title="Verify SyftBox is running">
+    ```bash
+    # Check SyftBox status
+    syftbox status
+    ```
+  </Step>
+</Steps>
+
+### For Google Colab
+
+No additional setup required! Syft-Flwr auto-detects Colab and uses P2P transport (Google Drive) instead of SyftBox.
+
+### For development
+
+Install additional development tools:
+
+```bash
+# Install just (command runner)
+brew install just  # macOS
+cargo install just  # Rust
+
+# Install pre-commit hooks
+uv run pre-commit install
+
+# Install ruff (linter/formatter)
+uv pip install ruff
+```
+
+## Platform-specific notes
+
+<AccordionGroup>
+  <Accordion title="macOS">
+    **Apple Silicon (M1/M2/M3)**
+
+    PyTorch automatically detects Metal Performance Shaders (MPS) for GPU acceleration:
+
+    ```python
+    import torch
+    print(torch.backends.mps.is_available())  # Should return True
+    ```
+
+    **Intel-based Macs**
+
+    Use CPU or install with CUDA if you have an eGPU.
+  </Accordion>
+
+  <Accordion title="Windows">
+    **Activate virtual environment**
+
+    ```bash
+    .venv\Scripts\activate
+    ```
+
+    **Path issues**
+
+    Use raw strings for paths:
+
+    ```python
+    from pathlib import Path
+    project_path = Path(r"C:\Users\Name\fl-project")
+    ```
+
+    **Long paths**
+
+    Enable long path support: `Computer Configuration > Administrative Templates > System > Filesystem > Enable Win32 long paths`
+  </Accordion>
+
+  <Accordion title="Linux">
+    **GPU support**
+
+    For CUDA-enabled GPUs:
+
+    ```bash
+    # Check CUDA version
+    nvidia-smi
+
+    # Install PyTorch with CUDA
+    pip install torch --index-url https://download.pytorch.org/whl/cu118
+    ```
+
+    **File permissions**
+
+    Ensure your user has read/write access to the SyftBox folder:
+
+    ```bash
+    chmod -R 755 ~/.syftbox
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Import errors">
+    **Error**: `ModuleNotFoundError: No module named 'syft_flwr'`
+
+    **Solution**:
+    ```bash
+    # Verify installation
+    pip list | grep syft-flwr
+
+    # Reinstall if missing
+    pip install --force-reinstall syft-flwr
+    ```
+  </Accordion>
+
+  <Accordion title="Version conflicts">
+    **Error**: `ERROR: pip's dependency resolver does not currently take into account...`
+
+    **Solution**:
+    ```bash
+    # Use uv (faster dependency resolution)
+    pip install uv
+    uv pip install syft-flwr
+
+    # Or upgrade pip
+    pip install --upgrade pip
+    ```
+  </Accordion>
+
+  <Accordion title="Python version mismatch">
+    **Error**: `Requires-Python >=3.12,<3.14`
+
+    **Solution**:
+    ```bash
+    # Check Python version
+    python --version
+
+    # Use pyenv to install correct version
+    pyenv install 3.12
+    pyenv local 3.12
+    ```
+  </Accordion>
+
+  <Accordion title="Flower simulation errors">
+    **Error**: `AttributeError: module 'flwr' has no attribute 'simulation'`
+
+    **Solution**:
+    ```bash
+    # Reinstall with simulation support
+    pip install "flwr[simulation]==1.25.0"
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Upgrading
+
+To upgrade to the latest version:
+
+<CodeGroup>
+
+```bash PyPI
+pip install --upgrade syft-flwr
+```
+
+```bash From source
+pip install --upgrade "git+https://github.com/OpenMined/syft-flwr.git@main"
+```
+
+```bash Development
+cd syft-flwr
+git pull
+uv sync --group dev
+```
+
+</CodeGroup>
+
+## Uninstalling
+
+To completely remove Syft-Flwr:
+
+```bash
+pip uninstall syft-flwr
+
+# Also remove dependencies if no longer needed
+pip uninstall syft-client syft-rds syft-dataset syft-job flwr flwr-datasets
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Quickstart"
+    icon="rocket"
+    href="/quickstart"
+  >
+    Train your first federated model in 5 minutes
+  </Card>
+  <Card
+    title="Development guide"
+    icon="code"
+    href="/development/overview"
+  >
+    Set up your development environment
+  </Card>
+  <Card
+    title="API reference"
+    icon="book"
+    href="/api/bootstrap"
+  >
+    Explore the complete API
+  </Card>
+  <Card
+    title="Examples"
+    icon="flask"
+    href="/examples/overview"
+  >
+    Learn from real-world examples
+  </Card>
+</CardGroup>
+
+## Get help
+
+If you encounter issues:
+
+- Check [existing GitHub issues](https://github.com/OpenMined/syft-flwr/issues)
+- Ask in [Slack](https://slack.openmined.org/) - #support-syftbox channel
+- Create a [new issue](https://github.com/OpenMined/syft-flwr/issues/new) with your error details

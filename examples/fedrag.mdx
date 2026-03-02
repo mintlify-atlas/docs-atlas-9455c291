@@ -1,0 +1,401 @@
+---
+title: "FedRAG (Federated Retrieval Augmented Generation)"
+description: "Build privacy-preserving question answering systems with federated document retrieval for Large Language Models"
+---
+
+FedRAG (Federated Retrieval Augmented Generation) enables Large Language Models to retrieve information from distributed document collections without centralizing sensitive data. Organizations can contribute to shared AI assistants while maintaining complete control over their proprietary documents.
+
+<img src="https://github.com/OpenMined/syft-flwr/raw/main/notebooks/fedrag/images/fedrag-rds.gif" alt="FedRAG Overview" />
+
+## Overview
+
+Traditional RAG systems require centralizing all documents in a single location, which is often impossible or illegal due to privacy regulations and competitive advantages. FedRAG solves this by:
+
+1. **Distributing Document Storage**: Each organization maintains their own private document store
+2. **Federated Retrieval**: Queries are sent to all datasites, which retrieve relevant documents locally
+3. **Privacy-Preserving Aggregation**: Only the most relevant documents are shared (not entire databases)
+4. **Consent-Based Access**: Data owners review and approve all computational jobs
+
+### Real-World Applications
+
+- **Healthcare**: Query medical knowledge across hospitals without sharing patient data
+- **Legal**: Search case law distributed across law firms while maintaining client confidentiality
+- **Research**: Access papers and datasets from multiple institutions without data centralization
+- **Enterprise**: Build AI assistants that can access siloed departmental knowledge
+
+## Architecture
+
+### FedRAG Pipeline
+
+<img src="https://github.com/OpenMined/syft-flwr/raw/main/notebooks/fedrag/fedrag_v1/images/FedRAG.png" alt="FedRAG Pipeline" />
+
+The federated RAG workflow consists of five stages:
+
+1. **Query Broadcasting**: Server sends user query to all participating clients
+2. **Local Retrieval**: Each client searches their local document store using FAISS index
+3. **Document Collection**: Top-k relevant documents from each client are returned to server
+4. **Re-ranking & Merging**: Server aggregates and re-ranks all retrieved documents
+5. **LLM Augmentation**: Final top-k documents are used as context for the LLM prompt
+
+### Key Components
+
+#### 1. Local Document Retrieval (Client)
+
+```python
+from fedrag.retriever import Retriever
+
+@app.query()
+def query(msg: Message, context: Context):
+    # Extract query parameters
+    question = str(msg.content["config"]["question"])
+    corpus_name = str(msg.content["config"]["corpus_name"])
+    knn = int(msg.content["config"]["knn"])
+    
+    # Initialize retrieval system
+    retriever = Retriever()
+    
+    # Retrieve top-k documents from local FAISS index
+    retrieved_docs = retriever.query_faiss_index(corpus_name, question, knn)
+    
+    # Extract scores and documents
+    scores = [doc["score"] for doc_id, doc in retrieved_docs.items()]
+    documents = [doc["content"] for doc_id, doc in retrieved_docs.items()]
+    
+    # Return only aggregated results (not entire corpus)
+    docs_n_scores = ConfigRecord({
+        "documents": documents,
+        "scores": scores,
+    })
+    return Message(RecordDict({"docs_n_scores": docs_n_scores}), reply_to=msg)
+```
+
+#### 2. Document Merging (Server)
+
+The server aggregates retrieved documents using either:
+
+**Option A: Score-based Merging**
+```python
+# Sort by L2 distance (lower is better)
+all_docs = []
+for reply in replies:
+    docs_scores = reply.content["docs_n_scores"]
+    for doc, score in zip(docs_scores["documents"], docs_scores["scores"]):
+        all_docs.append((doc, score))
+
+# Sort by score and take top-k
+all_docs.sort(key=lambda x: x[1])  # Lower L2 distance = more relevant
+top_k_docs = all_docs[:k]
+```
+
+**Option B: Reciprocal Rank Fusion (RRF)**
+```python
+def reciprocal_rank_fusion(doc_rankings, k_rrf=60):
+    """Merge rankings using RRF for better cross-client aggregation."""
+    rrf_scores = {}
+    for client_ranking in doc_rankings:
+        for rank, doc in enumerate(client_ranking, start=1):
+            if doc not in rrf_scores:
+                rrf_scores[doc] = 0
+            rrf_scores[doc] += 1 / (k_rrf + rank)
+    
+    # Sort by RRF score (higher is better)
+    return sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True)
+```
+
+#### 3. LLM Query Augmentation
+
+```python
+# Construct RAG prompt with retrieved documents
+context = "\n\n".join([doc[0] for doc in top_k_docs])
+prompt = f"""
+Context: {context}
+
+Question: {question}
+
+Answer based on the context above:
+"""
+
+# Query LLM
+answer = llm_model.generate(prompt)
+```
+
+## Setup
+
+### Prerequisites
+
+Install system dependencies based on your OS:
+
+```bash
+# macOS
+brew install wget git-lfs
+
+# Ubuntu/Debian
+apt install wget git-lfs
+
+# RHEL
+yum install wget git-lfs
+
+# Enable Git LFS
+git lfs install
+```
+
+### Clone the Example
+
+```bash
+git clone https://github.com/OpenMined/syft-flwr.git _tmp \
+    && mv _tmp/notebooks/fedrag . \
+    && rm -rf _tmp && cd fedrag
+```
+
+### Install Dependencies
+
+```bash
+uv sync
+```
+
+Key dependencies:
+- `faiss-cpu` or `faiss-gpu` - Vector similarity search
+- `transformers` - Hugging Face models for embeddings
+- `torch` - Deep learning framework
+- `syft_flwr` - SyftBox integration
+
+### Download & Index Corpus
+
+Before running FedRAG, download and index the document corpora:
+
+```bash
+# Quick start: Download Textbooks and StatPearls (first 100 chunks)
+./data/prepare.sh
+
+# Full setup: Download all corpora and index all documents
+./data/prepare.sh --datasets "pubmed" "statpearls" "textbooks" "wikipedia" --index_num_chunks 0
+```
+
+**Available Corpora**:
+
+| Corpus | Domain | Size | Documents |
+|--------|--------|------|----------|
+| PubMed | Medical research | ~60 GB | ~33M abstracts |
+| StatPearls | Medical textbooks | ~1 GB | ~7K chapters |
+| Textbooks | Medical textbooks | ~2 GB | ~18K sections |
+| Wikipedia | Medical articles | ~57 GB | ~5M articles |
+
+<Note>
+  The default setup uses Textbooks and StatPearls (first 100 chunks) to quickly demonstrate the pipeline. The total disk space for all corpora is ~120 GB.
+</Note>
+
+## Running the Example
+
+### Local Simulation
+
+Run FedRAG with the Flower simulation engine:
+
+```bash
+flwr run .
+```
+
+This will:
+1. Simulate 2 clients (each with a different corpus)
+2. Evaluate questions from PubMedQA and BioASQ benchmark datasets
+3. Retrieve documents using FAISS from distributed corpora
+4. Aggregate results and query the LLM
+5. Report accuracy and execution time
+
+### Configuration
+
+Edit `pyproject.toml` to customize the pipeline:
+
+```toml
+[tool.flwr.app.config]
+server-qa-datasets = "pubmedqa|bioasq"  # Benchmark datasets
+server-qa-num = 10                      # Questions to evaluate per dataset
+clients-corpus-names = "Textbooks|StatPearls"  # Corpora per client
+k-rrf = 60                              # RRF parameter for merging
+k-nn = 8                                # Top-k documents per client
+server-llm-hfpath = "HuggingFaceTB/SmolLM2-1.7B-Instruct"  # LLM model
+server-llm-use-gpu = "false"            # Enable GPU for LLM
+```
+
+<Tip>
+  Use `k-rrf=0` to merge documents by retrieval score only. Use `k-rrf>0` to apply Reciprocal Rank Fusion for more robust merging across heterogeneous clients.
+</Tip>
+
+### Jupyter Notebooks
+
+#### Local Setup
+
+1. Start with `local/do1.ipynb` (Data Owner 1 with Textbooks corpus)
+2. Then run `local/do2.ipynb` (Data Owner 2 with StatPearls corpus)
+3. Finally open `local/ds.ipynb` (Data Scientist who queries the federated system)
+
+#### Distributed Setup
+
+The `distributed/` directory contains notebooks for real distributed deployment using SyftBox client.
+
+## Example Results
+
+After running the evaluation, you'll see results like:
+
+| QA Dataset | Questions | Answered | Accuracy | Time (secs) |
+|------------|-----------|----------|----------|-------------|
+| PubMedQA   | 10        | 8        | 0.53     | 6.03        |
+| BioASQ     | 10        | 9        | 0.61     | 5.83        |
+
+**Metrics Explained**:
+- **Questions**: Total questions evaluated from benchmark dataset
+- **Answered**: Questions the LLM provided an answer for (some may be unanswerable)
+- **Accuracy**: Fraction of correct answers compared to ground truth
+- **Time**: Average wall-clock time per question (including retrieval + LLM inference)
+
+## Advanced Features
+
+### GPU Acceleration
+
+Enable GPU for faster LLM inference:
+
+```toml
+[tool.flwr.app.config]
+server-llm-use-gpu = "true"
+```
+
+For client-side GPU (if needed for embeddings):
+
+```toml
+[tool.flwr.federations.local-simulation.options]
+backend.client-resources.num-gpus = 0.1
+```
+
+### Custom Merging Strategies
+
+Extend the default RRF merging with custom logic:
+
+```python
+from fedrag.llm_querier import merge_and_rerank
+
+def custom_merge(retrieved_docs_per_client, k_final=8):
+    """Custom merging strategy with domain-specific weights."""
+    weighted_docs = []
+    
+    for client_id, docs in enumerate(retrieved_docs_per_client):
+        # Apply client-specific weights (e.g., trust scores)
+        client_weight = get_client_weight(client_id)
+        for doc, score in docs:
+            weighted_score = score * client_weight
+            weighted_docs.append((doc, weighted_score))
+    
+    # Sort and return top-k
+    weighted_docs.sort(key=lambda x: x[1])
+    return weighted_docs[:k_final]
+```
+
+### Multi-Corpus Setup
+
+Distribute different corpora across clients:
+
+```toml
+# Client 1: PubMed, Client 2: StatPearls, Client 3: Textbooks
+clients-corpus-names = "pubmed|statpearls|textbooks"
+
+[tool.flwr.federations.local-simulation.options]
+num-supernodes = 3
+```
+
+## Privacy Considerations
+
+### What is Shared
+
+- Top-k retrieved document snippets (typically 8-16 documents)
+- Retrieval scores (distances from query)
+- Query text (question being asked)
+
+### What Stays Private
+
+- Entire document corpus
+- Non-retrieved documents
+- FAISS index structure
+- Embedding vectors
+
+<Warning>
+  Retrieved documents are shared with the server and included in LLM prompts. Data owners should review queries and decide which are acceptable based on document sensitivity. For additional privacy, consider:
+  - Differential privacy on retrieval scores
+  - Homomorphic encryption for document ranking
+  - Secure multi-party computation for aggregation
+</Warning>
+
+## Advanced Research Extensions
+
+This example provides building blocks for more sophisticated FedRAG systems:
+
+### 1. Domain-Specific Fine-Tuned LLMs
+
+Combine FedRAG with federated learning to train domain-specific LLMs:
+
+> Jung, Jincheol, et al. "Federated Learning and RAG Integration: A Scalable Approach for Medical Large Language Models." arXiv:2412.13720 (2024).
+
+### 2. Confidential Compute for Re-ranking
+
+Use trusted execution environments (TEEs) for secure document re-ranking:
+
+> Addison, Parker, et al. "C-FedRAG: A Confidential Federated Retrieval-Augmented Generation System." arXiv:2412.13163 (2024).
+
+### 3. Encrypted Vector Search
+
+Apply homomorphic encryption for privacy-preserving similarity search:
+
+> Zhao, Dongfang. "FRAG: Toward Federated Vector Database Management for Collaborative and Secure Retrieval-Augmented Generation." arXiv:2410.13272 (2024).
+
+## Project Structure
+
+```
+fedrag/
+├── fedrag_v1/
+│   ├── fedrag/
+│   │   ├── __init__.py
+│   │   ├── client_app.py       # Document retrieval logic
+│   │   ├── server_app.py       # Aggregation and LLM querying
+│   │   ├── retriever.py        # FAISS index management
+│   │   ├── llm_querier.py      # LLM integration
+│   │   ├── mirage_qa.py        # QA benchmark evaluation
+│   │   └── task.py             # Utilities
+│   └── pyproject.toml
+├── data/
+│   ├── prepare.sh              # Corpus download script
+│   ├── corpus/                 # Downloaded corpora
+│   └── README.md
+├── local/                       # Local simulation notebooks
+├── distributed/                 # Distributed deployment notebooks
+├── images/
+└── README.md
+```
+
+## Deployment Options
+
+<CardGroup cols={2}>
+  <Card title="Local Simulation" icon="laptop" href="/examples/local-simulation">
+    Run on your local machine with simulated distributed corpora.
+  </Card>
+  
+  <Card title="SyftBox Network" icon="network-wired" href="/examples/syftbox">
+    Deploy across real distributed nodes with separate document stores.
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Diabetes Prediction" icon="brain" href="/examples/diabetes-prediction">
+    Learn federated learning for model training.
+  </Card>
+  
+  <Card title="Federated Analytics" icon="chart-bar" href="/examples/federated-analytics">
+    Compute statistics on distributed data.
+  </Card>
+</CardGroup>
+
+## Resources
+
+- [Flower FedRAG Documentation](https://flower.ai/docs/examples/fedrag.html)
+- [MedRAG Benchmark](https://github.com/Teddy-XiongGZ/MedRAG)
+- [MIRAGE QA Benchmark](https://github.com/Teddy-XiongGZ/MIRAGE)
+- [FAISS Documentation](https://github.com/facebookresearch/faiss)
+- [SyftBox](https://syftbox.net)

@@ -1,0 +1,422 @@
+---
+title: Running Local Simulations
+description: Learn how to run federated learning simulations locally to test your Syft-Flwr projects before deployment
+---
+
+## Overview
+
+Simulations allow you to test your federated learning workflow locally before deploying to real datasites. Syft-Flwr simulates a multi-party FL environment using mock datasets and temporary client instances.
+
+## Prerequisites
+
+- A bootstrapped Syft-Flwr project (see [Bootstrapping Projects](/guides/bootstrap-projects))
+- Mock datasets prepared for testing
+- Python 3.9 or higher
+
+## Quick Start
+
+### Using the CLI
+
+```bash
+syft_flwr run /path/to/project \
+  --mock-dataset-paths /data/client1,/data/client2
+```
+
+### Interactive Mode
+
+If you don't provide dataset paths, the CLI will prompt you:
+
+```bash
+syft_flwr run ./my-fl-project
+# Enter comma-separated paths to mock datasets: /data/hospital1,/data/hospital2
+```
+
+### Using Python API
+
+```python
+from pathlib import Path
+from syft_flwr.run_simulation import run
+
+project_dir = Path("./my-fl-project")
+mock_datasets = [
+    "/data/hospital1",
+    "/data/hospital2"
+]
+
+success = run(project_dir, mock_datasets)
+if success:
+    print("Simulation completed successfully!")
+```
+
+## How Simulations Work
+
+### 1. Mock RDS Client Setup
+
+Simulations create temporary RDS (Remote Data Store) clients for each participant:
+
+```python
+# run_simulation.py:41-65
+def _setup_mock_rds_clients(
+    project_dir: Path, aggregator: str, datasites: list[str]
+) -> tuple[Path, list[RDSClient], RDSClient]:
+    """Setup mock RDS clients for the given project directory"""
+    simulated_syftbox_network_dir = Path(tempfile.gettempdir(), project_dir.name)
+    
+    # Create aggregator client
+    ds_syftbox_client = create_temp_client(
+        email=aggregator, workspace_dir=simulated_syftbox_network_dir
+    )
+    ds_rds_client = init_session(
+        host=aggregator, email=aggregator, syftbox_client=ds_syftbox_client
+    )
+    
+    # Create data owner clients
+    do_rds_clients = []
+    for datasite in datasites:
+        do_syftbox_client = create_temp_client(
+            email=datasite, workspace_dir=simulated_syftbox_network_dir
+        )
+        do_rds_client = init_session(
+            host=datasite, email=datasite, syftbox_client=do_syftbox_client
+        )
+        do_rds_clients.append(do_rds_client)
+    
+    return simulated_syftbox_network_dir, do_rds_clients, ds_rds_client
+```
+
+### 2. Encryption Bootstrap
+
+By default, simulations use end-to-end encryption:
+
+```python
+# run_simulation.py:68-130
+def _bootstrap_encryption_keys(
+    do_clients: list[RDSClient], ds_client: RDSClient
+) -> None:
+    """Bootstrap the encryption keys for all clients if encryption is enabled."""
+    encryption_enabled = (
+        os.environ.get(SYFT_FLWR_ENCRYPTION_ENABLED, "true").lower() != "false"
+    )
+    
+    if not encryption_enabled:
+        logger.warning("⚠️ Encryption disabled - skipping key bootstrap")
+        return
+    
+    logger.info("🔐 Bootstrapping encryption keys for all participants...")
+    
+    # Bootstrap server and clients
+    # Verify DID documents are accessible
+    # ...
+```
+
+<Note>
+To disable encryption for testing:
+```bash
+export SYFT_FLWR_ENCRYPTION_ENABLED=false
+syft_flwr run ./my-fl-project -m /data/client1,/data/client2
+```
+</Note>
+
+### 3. Concurrent Execution
+
+Server and clients run concurrently using asyncio:
+
+```python
+# run_simulation.py:169-231
+async def _run_simulated_flwr_project(
+    project_dir: Path,
+    do_clients: list[RDSClient],
+    ds_client: RDSClient,
+    mock_dataset_paths: list[Union[str, Path]],
+) -> bool:
+    """Run all clients and server concurrently"""
+    log_dir = project_dir / "simulation_logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    
+    main_py_path = project_dir / "main.py"
+    
+    # Start server
+    ds_task = asyncio.create_task(
+        _run_main_py(
+            main_py_path,
+            ds_client._syftbox_client.config_path,
+            ds_client.email,
+            log_dir,
+        )
+    )
+    
+    # Start clients
+    client_tasks = []
+    for client, mock_dataset_path in zip(do_clients, mock_dataset_paths):
+        client_tasks.append(
+            asyncio.create_task(
+                _run_main_py(
+                    main_py_path,
+                    client._syftbox_client.config_path,
+                    client.email,
+                    log_dir,
+                    mock_dataset_path,
+                )
+            )
+        )
+    
+    # Wait for server to complete
+    ds_return_code = await ds_task
+    
+    # Cancel client tasks when server completes
+    for task in client_tasks:
+        if not task.done():
+            task.cancel()
+    
+    return ds_return_code == 0
+```
+
+## Mock Dataset Configuration
+
+### Dataset Structure
+
+Each mock dataset path should contain the data for one client:
+
+```
+/data/
+├── hospital1/
+│   ├── train.csv
+│   └── test.csv
+└── hospital2/
+    ├── train.csv
+    └── test.csv
+```
+
+### Accessing Datasets in Client Code
+
+Clients access their dataset via the `DATA_DIR` environment variable:
+
+```python
+# client_app.py
+import os
+import pandas as pd
+from pathlib import Path
+from syft_flwr.utils import get_syftbox_dataset_path
+
+def load_data():
+    # Automatically uses DATA_DIR environment variable
+    data_dir = get_syftbox_dataset_path()
+    
+    df_train = pd.read_csv(data_dir / "train.csv")
+    df_test = pd.read_csv(data_dir / "test.csv")
+    
+    return pd.concat([df_train, df_test], ignore_index=True)
+```
+
+### Dataset Path Validation
+
+Simulation validates all dataset paths before execution:
+
+```python
+# run_simulation.py:249-257
+def _validate_mock_dataset_paths(mock_dataset_paths: list[str]) -> list[Path]:
+    """Validate the mock dataset paths"""
+    resolved_paths = []
+    for path in mock_dataset_paths:
+        path = Path(path).expanduser().resolve()
+        if not path.exists():
+            raise ValueError(f"Mock dataset path {path} does not exist")
+        resolved_paths.append(path)
+    return resolved_paths
+```
+
+## Simulation Logs
+
+Logs are saved to `<project_dir>/simulation_logs/`:
+
+```bash
+my-fl-project/
+└── simulation_logs/
+    ├── data-scientist@openmined.org.log  # Server logs
+    ├── hospital1@med.org.log             # Client 1 logs
+    └── hospital2@med.org.log             # Client 2 logs
+```
+
+### Viewing Logs
+
+```bash
+# View server logs
+cat my-fl-project/simulation_logs/data-scientist@openmined.org.log
+
+# View all logs
+tail -f my-fl-project/simulation_logs/*.log
+```
+
+## Running in Different Environments
+
+<Tabs>
+  <Tab title="Command Line">
+    ```bash
+    # Standard execution
+    syft_flwr run ./my-fl-project \
+      --mock-dataset-paths /data/c1,/data/c2
+    ```
+
+    Returns exit code 0 on success, 1 on failure.
+  </Tab>
+
+  <Tab title="Python Script">
+    ```python
+    from syft_flwr.run_simulation import run
+    
+    success = run(
+        project_dir="./my-fl-project",
+        mock_dataset_paths=["/data/c1", "/data/c2"]
+    )
+    
+    if success:
+        print("Simulation passed!")
+    else:
+        print("Simulation failed!")
+        exit(1)
+    ```
+
+    Returns `True` on success, `False` on failure.
+  </Tab>
+
+  <Tab title="Jupyter Notebook">
+    ```python
+    from syft_flwr.run_simulation import run
+    import asyncio
+    
+    # Run simulation (returns asyncio.Task in Jupyter)
+    task = run(
+        project_dir="./my-fl-project",
+        mock_dataset_paths=["/data/c1", "/data/c2"]
+    )
+    
+    # Wait for completion
+    success = await task
+    print(f"Simulation {'passed' if success else 'failed'}")
+    ```
+
+    Automatically detects event loop and returns a Task.
+  </Tab>
+</Tabs>
+
+## Complete Example
+
+Here's a full simulation workflow:
+
+<Steps>
+  <Step title="Prepare Mock Data">
+    ```bash
+    mkdir -p /tmp/mock_data/{hospital1,hospital2}
+    
+    # Copy or generate mock datasets
+    cp hospital1_train.csv /tmp/mock_data/hospital1/train.csv
+    cp hospital1_test.csv /tmp/mock_data/hospital1/test.csv
+    cp hospital2_train.csv /tmp/mock_data/hospital2/train.csv
+    cp hospital2_test.csv /tmp/mock_data/hospital2/test.csv
+    ```
+  </Step>
+
+  <Step title="Run Simulation">
+    ```bash
+    syft_flwr run ./fed-analytics-diabetes \
+      --mock-dataset-paths /tmp/mock_data/hospital1,/tmp/mock_data/hospital2
+    ```
+  </Step>
+
+  <Step title="Check Results">
+    ```bash
+    # Check if simulation succeeded
+    echo $?  # Should be 0
+    
+    # Review logs
+    ls -la ./fed-analytics-diabetes/simulation_logs/
+    cat ./fed-analytics-diabetes/simulation_logs/*.log
+    ```
+  </Step>
+</Steps>
+
+## Advanced Configuration
+
+### Skipping Module Validation
+
+Useful for parallel test execution:
+
+```bash
+export SYFT_FLWR_SKIP_MODULE_CHECK=true
+syft_flwr run ./my-fl-project -m /data/c1,/data/c2
+```
+
+### Custom Temporary Directory
+
+Simulations use `/tmp` by default. The directory is cleaned up automatically:
+
+```python
+# run_simulation.py:292-312
+async def main():
+    try:
+        run_success = await _run_simulated_flwr_project(...)
+        if run_success:
+            logger.success("Simulation completed successfully ✅")
+        else:
+            logger.error("Simulation failed ❌")
+    finally:
+        # Clean up the RDS stack
+        remove_rds_stack_dir(simulated_syftbox_network_dir)
+        # Remove config files and private keys
+        remove_rds_stack_dir(simulated_syftbox_network_dir.parent / ".syftbox")
+```
+
+## Troubleshooting
+
+### "Project directory does not exist"
+
+Ensure the project is bootstrapped:
+
+```bash
+ls my-fl-project/main.py  # Must exist
+ls my-fl-project/pyproject.toml
+```
+
+### "Mock dataset path does not exist"
+
+Verify all dataset paths:
+
+```bash
+ls /data/hospital1/  # Should contain train.csv, test.csv
+ls /data/hospital2/
+```
+
+### Simulation Hangs
+
+Check logs for errors:
+
+```bash
+tail -f ./my-fl-project/simulation_logs/*.log
+```
+
+Common issues:
+- Client code has infinite loop
+- Server waiting for more clients than provided
+- Dataset loading errors
+
+### "FileNotFoundError: Path .data/ does not exist"
+
+Ensure `DATA_DIR` environment variable is set correctly by the simulation runner:
+
+```python
+# run_simulation.py:133-146
+env = os.environ.copy()
+env["SYFTBOX_CLIENT_CONFIG_PATH"] = str(config_path)
+env["DATA_DIR"] = str(dataset_path)  # Set by simulation
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Multi-Client Setup" icon="users" href="/guides/multi-client-setup">
+    Deploy to real datasites
+  </Card>
+  <Card title="Offline Training" icon="cloud-arrow-down" href="/guides/offline-training">
+    Asynchronous FL patterns
+  </Card>
+</CardGroup>

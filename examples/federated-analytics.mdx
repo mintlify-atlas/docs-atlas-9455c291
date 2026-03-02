@@ -1,0 +1,338 @@
+---
+title: "Federated Analytics"
+description: "Compute aggregated statistics and histograms on distributed datasets without centralizing data"
+---
+
+This example demonstrates federated analytics—computing statistics across distributed datasets without moving or centralizing the raw data. Multiple data owners can collaboratively analyze their combined data while keeping individual records private.
+
+<img src="https://github.com/OpenMined/syft-flwr/raw/main/notebooks/federated-analytics-diabetes/images/fed-analytics.gif" alt="Federated Analytics Process" />
+
+## Overview
+
+Federated analytics enables organizations to gain insights from distributed data without sharing sensitive information. Instead of collecting all data in one place, each data owner computes local statistics (means, histograms, counts) and only shares these aggregated metrics.
+
+### Use Cases
+
+- **Healthcare**: Aggregate patient statistics across hospitals without sharing individual medical records
+- **Finance**: Compute market trends from distributed financial data while maintaining privacy
+- **Research**: Analyze survey data from multiple institutions without exposing individual responses
+- **Business Intelligence**: Generate insights from multi-party datasets with competitive sensitivities
+
+### Key Features
+
+- **Privacy-Preserving**: Only aggregated statistics are shared, not raw data
+- **Flexible Analytics**: Compute means, histograms, counts, and custom metrics
+- **Pandas Integration**: Work with familiar data analysis tools
+- **Visualization**: Generate combined histograms and plots from federated data
+
+## Architecture
+
+The federated analytics workflow consists of three main components:
+
+### 1. Client-Side Computation
+
+Each data owner computes local statistics on their private dataset:
+
+```python
+KEY_DIABETES_FEATURES = ["Glucose", "BMI", "Age"]
+FEATURE_BINS = {
+    "Glucose": np.linspace(40, 250, 11),  # 10 bins from 40 to 250
+    "BMI": np.linspace(15, 60, 10),       # 9 bins from 15 to 60
+    "Age": np.linspace(20, 90, 15),       # 14 bins from 20 to 90
+}
+
+@app.query()
+def query(msg: Message, context: Context):
+    """Construct histogram of local dataset and report to ServerApp."""
+    
+    # Load local data
+    df = load_syftbox_dataset()  # or load_flwr_data(partition_id, num_partitions)
+    
+    metrics = {}
+    for feature_name in KEY_DIABETES_FEATURES:
+        # Separate by outcome (diabetes status)
+        subset_no_diabetes = df[df["y"] == 0]
+        subset_diabetes = df[df["y"] == 1]
+        
+        # Compute histograms for each outcome
+        freqs_0, _ = np.histogram(
+            subset_no_diabetes[feature_name].dropna(),
+            bins=FEATURE_BINS[feature_name]
+        )
+        freqs_1, _ = np.histogram(
+            subset_diabetes[feature_name].dropna(),
+            bins=FEATURE_BINS[feature_name]
+        )
+        
+        # Store metrics
+        metrics[f"{feature_name}_hist_outcome0"] = freqs_0.tolist()
+        metrics[f"{feature_name}_mean_outcome0"] = float(
+            subset_no_diabetes[feature_name].mean()
+        )
+        metrics[f"{feature_name}_count_outcome0"] = len(subset_no_diabetes)
+        
+        metrics[f"{feature_name}_hist_outcome1"] = freqs_1.tolist()
+        metrics[f"{feature_name}_mean_outcome1"] = float(
+            subset_diabetes[feature_name].mean()
+        )
+        metrics[f"{feature_name}_count_outcome1"] = len(subset_diabetes)
+    
+    return Message(RecordDict({"query_results": MetricRecord(metrics)}), reply_to=msg)
+```
+
+### 2. Server-Side Aggregation
+
+The server aggregates partial statistics from all clients:
+
+```python
+def aggregate_partial_histograms(messages: Iterable[Message]):
+    """Aggregate partial histograms from multiple clients."""
+    aggregated_hist = {}
+    
+    for rep in messages:
+        if rep.has_error():
+            continue
+        
+        query_results = rep.content["query_results"]
+        
+        for k, v in query_results.items():
+            if "hist_outcome" in k:
+                # Sum histogram frequencies
+                if k in aggregated_hist:
+                    aggregated_hist[k] += np.array(v)
+                else:
+                    aggregated_hist[k] = np.array(v)
+            
+            if "count_outcome" in k:
+                # Sum counts
+                if k in aggregated_hist:
+                    aggregated_hist[k] += v
+                else:
+                    aggregated_hist[k] = v
+    
+    return aggregated_hist
+```
+
+### 3. Visualization
+
+The aggregated results are visualized to show combined insights:
+
+```python
+def plot_feature_histogram(feature_name: str, metrics_dict: dict):
+    """Plot combined histogram for a feature."""
+    hist_outcome0 = metrics_dict.get(f"{feature_name}_hist_outcome0")
+    hist_outcome1 = metrics_dict.get(f"{feature_name}_hist_outcome1")
+    bin_edges = FEATURE_BINS[feature_name]
+    
+    plt.figure(figsize=(10, 6))
+    plt.bar(bin_edges[:-1], hist_outcome0, width=np.diff(bin_edges),
+            align='edge', alpha=0.6, label='No Diabetes', color='skyblue')
+    plt.bar(bin_edges[:-1], hist_outcome1, width=np.diff(bin_edges),
+            align='edge', alpha=0.6, label='Diabetes', color='salmon')
+    
+    plt.title(f"Federated Histogram: {feature_name}")
+    plt.xlabel(feature_name)
+    plt.ylabel("Frequency")
+    plt.legend(title="Diabetes Status")
+    plt.savefig(f"{feature_name}_histogram.png")
+```
+
+## Setup
+
+### Clone the Project
+
+```bash
+git clone https://github.com/OpenMined/syft-flwr.git _tmp \
+    && mv _tmp/notebooks/federated-analytics-diabetes . \
+    && rm -rf _tmp && cd federated-analytics-diabetes
+```
+
+### Install Dependencies
+
+```bash
+uv sync
+```
+
+This installs:
+- `flwr-datasets` - Federated dataset utilities
+- `pandas` - Data manipulation
+- `numpy` - Numerical computing
+- `matplotlib` / `seaborn` - Visualization
+- `syft_flwr` - SyftBox integration
+
+## Running the Example
+
+### Local Simulation
+
+The `local/` directory contains notebooks for running on your local machine:
+
+1. **Data Owner 1**: Open and run `local/do1.ipynb`
+2. **Data Owner 2**: Open and run `local/do2.ipynb`
+3. **Data Scientist**: Open and run `local/ds.ipynb`
+
+Switch between notebooks as indicated to simulate the federated analytics workflow.
+
+### Distributed Setup
+
+The `distributed/` directory contains the same workflow for real distributed deployment:
+
+1. Each data owner runs their notebook on a separate machine with SyftBox client installed
+2. The data scientist coordinates the analysis from their machine
+3. All communication happens through the SyftBox network
+
+## Workflow Overview
+
+### Step 1: Data Owners Prepare Data
+
+Each data owner:
+1. Loads their local partition of the diabetes dataset
+2. Sets up their SyftBox datasite (if using distributed mode)
+3. Waits for analytics queries from the data scientist
+
+### Step 2: Data Scientist Initiates Query
+
+The data scientist:
+1. Specifies which features to analyze
+2. Defines histogram bins and aggregation functions
+3. Sends query to all participating data owners
+
+### Step 3: Local Computation
+
+Each data owner:
+1. Receives the analytics query
+2. Computes local statistics on their private data
+3. Sends only aggregated metrics back (not raw data)
+
+### Step 4: Aggregation and Visualization
+
+The data scientist:
+1. Receives partial statistics from all data owners
+2. Aggregates the results (sums histograms, averages means)
+3. Generates visualizations showing combined insights
+
+## Example Output
+
+The federated analytics process produces:
+
+### Aggregated Metrics
+
+```python
+{
+    'Glucose_hist_outcome0': [5, 12, 18, 25, 30, 22, 15, 8, 3, 2],
+    'Glucose_mean_outcome0': 109.2,
+    'Glucose_count_outcome0': 140,
+    'Glucose_hist_outcome1': [2, 5, 8, 15, 20, 18, 12, 8, 5, 2],
+    'Glucose_mean_outcome1': 141.5,
+    'Glucose_count_outcome1': 95,
+    # ... similar metrics for BMI and Age
+}
+```
+
+### Visualizations
+
+Histograms showing the distribution of features across all data owners, separated by diabetes outcome:
+
+- `Glucose_histogram.png` - Glucose level distribution
+- `BMI_histogram.png` - BMI distribution
+- `Age_histogram.png` - Age distribution
+
+Each histogram shows two overlapping distributions (diabetes vs. no diabetes) computed from the combined federated data.
+
+## Privacy Guarantees
+
+### What is Shared
+
+- Histogram frequencies (counts per bin)
+- Aggregated statistics (means, sums, counts)
+- Bin edges and configuration
+
+### What Stays Private
+
+- Individual patient records
+- Raw dataset values
+- Exact data owner contributions (after aggregation)
+
+<Warning>
+  While federated analytics provides better privacy than centralized data collection, aggregated statistics can still leak information about small datasets. Consider adding differential privacy for stronger guarantees.
+</Warning>
+
+## Project Structure
+
+```
+federated-analytics-diabetes/
+├── fed-analytics-diabetes/
+│   ├── fed_analytics_diabetes/
+│   │   ├── __init__.py
+│   │   ├── client_app.py     # Local computation logic
+│   │   └── server_app.py     # Aggregation and visualization
+│   └── pyproject.toml
+├── local/                     # Local simulation notebooks
+│   ├── do1.ipynb
+│   ├── do2.ipynb
+│   └── ds.ipynb
+├── distributed/               # Distributed deployment notebooks
+├── images/
+├── pyproject.toml
+└── README.md
+```
+
+## Advanced Analytics
+
+Extend the basic example to compute additional statistics:
+
+### Correlation Analysis
+
+```python
+# Client-side: compute covariance
+covariance_matrix = df[KEY_DIABETES_FEATURES].cov()
+metrics["covariance"] = covariance_matrix.values.tolist()
+
+# Server-side: aggregate and compute correlation
+agg_cov = sum(client_covs) / len(client_covs)
+correlation = cov_to_correlation(agg_cov)
+```
+
+### Quantile Estimation
+
+```python
+# Client-side: compute local quantiles
+for q in [0.25, 0.5, 0.75]:
+    metrics[f"{feature}_q{int(q*100)}"] = df[feature].quantile(q)
+
+# Server-side: weighted average of quantiles
+agg_quantile = weighted_avg([m[f"{feature}_q50"] for m in metrics])
+```
+
+## Deployment Options
+
+<CardGroup cols={2}>
+  <Card title="Local Simulation" icon="laptop" href="/examples/local-simulation">
+    Run on your local machine for development and testing.
+  </Card>
+  
+  <Card title="Google Colab" icon="cloud" href="/examples/google-drive">
+    Zero-setup federated analytics using only Google Colab.
+  </Card>
+  
+  <Card title="SyftBox Network" icon="network-wired" href="/examples/syftbox">
+    Deploy across real distributed nodes.
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Diabetes Prediction" icon="brain" href="/examples/diabetes-prediction">
+    Learn federated learning for model training.
+  </Card>
+  
+  <Card title="FedRAG" icon="magnifying-glass" href="/examples/fedrag">
+    Explore advanced federated document retrieval.
+  </Card>
+</CardGroup>
+
+## Resources
+
+- [Federated Analytics with Flower and Pandas](https://flower.ai/blog/2023-01-24-federated-analytics-pandas/)
+- [SyftBox Documentation](https://syftbox.net)
+- [PIMA Indians Diabetes Database](https://www.kaggle.com/datasets/uciml/pima-indians-diabetes-database/)

@@ -1,0 +1,442 @@
+---
+title: "Versioning"
+description: "Version strategy and semantic versioning guidelines"
+---
+
+Syft-Flwr follows [Semantic Versioning 2.0.0](https://semver.org/) and uses [Conventional Commits](https://www.conventionalcommits.org/) for automated version management.
+
+## Semantic Versioning
+
+Version numbers follow the format `MAJOR.MINOR.PATCH`:
+
+```
+v0.5.0
+│ │ │
+│ │ └─ PATCH: Bug fixes and small improvements
+│ └─── MINOR: New features, backward compatible
+└───── MAJOR: Breaking changes
+```
+
+### Version Types
+
+<CardGroup cols={3}>
+  <Card title="Patch" icon="wrench">
+    **0.3.1 → 0.3.2**
+    
+    - Bug fixes
+    - Documentation updates
+    - Performance improvements
+    - Internal refactoring
+    - No breaking changes
+    - No new features
+  </Card>
+  
+  <Card title="Minor" icon="sparkles">
+    **0.3.1 → 0.4.0**
+    
+    - New features
+    - New functionality
+    - Backward compatible
+    - Deprecations (with warnings)
+    - No breaking changes
+  </Card>
+  
+  <Card title="Major" icon="rocket">
+    **0.3.1 → 1.0.0**
+    
+    - Breaking changes
+    - API changes
+    - Removed deprecated features
+    - Not backward compatible
+    - Significant architectural changes
+  </Card>
+</CardGroup>
+
+## Version Bumping
+
+Use the `just bump` command to increment versions:
+
+<CodeGroup>
+```bash Patch version
+# For bug fixes and small improvements
+just bump patch
+
+# Example: 0.5.0 → 0.5.1
+```
+
+```bash Minor version
+# For new features (backward compatible)
+just bump minor
+
+# Example: 0.5.0 → 0.6.0
+```
+
+```bash Major version
+# For breaking changes
+just bump major
+
+# Example: 0.5.0 → 1.0.0
+```
+
+```bash Preview changes (dry run)
+# See what would change without committing
+just bump-dry patch
+```
+</CodeGroup>
+
+## What Happens During a Version Bump
+
+When you run `just bump <type>`, the following occurs:
+
+<Steps>
+  <Step title="Commitizen updates version">
+    Uses [Commitizen](https://commitizen-tools.github.io/commitizen/) to:
+    
+    - Calculate the new version number
+    - Update version in all configured files
+    - Create a git commit with the version change
+    - Create a git tag (e.g., `v0.5.1`)
+  </Step>
+  
+  <Step title="Lock file updates">
+    - Updates main project's `uv.lock` file
+    - Updates notebook `pyproject.toml` dependency versions
+    - Amends changes into the version bump commit
+  </Step>
+  
+  <Step title="Post-publish updates">
+    After publishing to PyPI:
+    
+    - Notebook `uv.lock` files are updated with the published version
+    - Separate commit created for lock file updates
+  </Step>
+</Steps>
+
+## Version Files
+
+Version numbers are automatically updated in these files:
+
+<AccordionGroup>
+  <Accordion title="pyproject.toml">
+    Main project version:
+    
+    ```toml
+    [project]
+    name = "syft-flwr"
+    version = "0.5.0"
+    ```
+  </Accordion>
+  
+  <Accordion title="src/syft_flwr/__init__.py">
+    Package `__version__` variable:
+    
+    ```python
+    __version__ = "0.5.0"
+    ```
+  </Accordion>
+  
+  <Accordion title="notebooks/*/pyproject.toml">
+    Notebook dependencies:
+    
+    ```toml
+    dependencies = [
+        "syft-flwr>=0.5.0",
+        # other dependencies...
+    ]
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Conventional Commits
+
+Syft-Flwr uses [Conventional Commits](https://www.conventionalcommits.org/) for commit messages. This enables automated version bumping and changelog generation.
+
+### Commit Message Format
+
+```
+<type>[optional scope]: <description>
+
+[optional body]
+
+[optional footer(s)]
+```
+
+### Commit Types
+
+<CardGroup cols={2}>
+  <Card title="feat" icon="star">
+    **New feature**
+    
+    Triggers: **MINOR** version bump
+    
+    ```bash
+    git commit -m "feat: add model aggregation strategy"
+    git commit -m "feat(client): support custom data loaders"
+    ```
+  </Card>
+  
+  <Card title="fix" icon="bug">
+    **Bug fix**
+    
+    Triggers: **PATCH** version bump
+    
+    ```bash
+    git commit -m "fix: resolve memory leak in training loop"
+    git commit -m "fix(server): handle connection timeout"
+    ```
+  </Card>
+  
+  <Card title="docs" icon="book">
+    **Documentation**
+    
+    No version bump
+    
+    ```bash
+    git commit -m "docs: update installation guide"
+    git commit -m "docs(api): add examples for DataOwner"
+    ```
+  </Card>
+  
+  <Card title="refactor" icon="arrows-rotate">
+    **Code refactoring**
+    
+    No version bump
+    
+    ```bash
+    git commit -m "refactor: simplify config parsing"
+    git commit -m "refactor(client): extract helper functions"
+    ```
+  </Card>
+  
+  <Card title="test" icon="flask">
+    **Tests**
+    
+    No version bump
+    
+    ```bash
+    git commit -m "test: add integration tests for FL workflow"
+    git commit -m "test(unit): improve coverage for utils"
+    ```
+  </Card>
+  
+  <Card title="chore" icon="wrench">
+    **Maintenance**
+    
+    No version bump
+    
+    ```bash
+    git commit -m "chore: update dependencies"
+    git commit -m "chore(ci): optimize GitHub Actions"
+    ```
+  </Card>
+  
+  <Card title="perf" icon="gauge-high">
+    **Performance**
+    
+    Triggers: **PATCH** version bump
+    
+    ```bash
+    git commit -m "perf: optimize model serialization"
+    git commit -m "perf(training): reduce memory usage"
+    ```
+  </Card>
+  
+  <Card title="build" icon="hammer">
+    **Build system**
+    
+    No version bump
+    
+    ```bash
+    git commit -m "build: update build configuration"
+    git commit -m "build(deps): upgrade flwr to 1.25.0"
+    ```
+  </Card>
+</CardGroup>
+
+### Breaking Changes
+
+Breaking changes trigger a **MAJOR** version bump:
+
+<CodeGroup>
+```bash Footer notation
+git commit -m "feat: redesign client API
+
+BREAKING CHANGE: Client initialization now requires a config object"
+```
+
+```bash Exclamation mark notation  
+git commit -m "feat!: redesign client API"
+```
+
+```bash With scope
+git commit -m "feat(api)!: change DataOwner interface"
+```
+</CodeGroup>
+
+### Examples
+
+<AccordionGroup>
+  <Accordion title="Feature with scope">
+    ```bash
+    git commit -m "feat(strategy): add FedProx aggregation algorithm
+    
+    Implements the FedProx federated learning strategy with configurable
+    proximal term coefficient."
+    ```
+  </Accordion>
+  
+  <Accordion title="Bug fix with issue reference">
+    ```bash
+    git commit -m "fix: prevent race condition in model upload
+    
+    Adds proper locking mechanism to prevent concurrent uploads
+    from different clients.
+    
+    Fixes #123"
+    ```
+  </Accordion>
+  
+  <Accordion title="Breaking change">
+    ```bash
+    git commit -m "feat!: change configuration file format
+    
+    Configuration now uses TOML instead of JSON for better readability
+    and support for comments.
+    
+    BREAKING CHANGE: Existing JSON config files must be converted to TOML.
+    Migration script provided in scripts/migrate-config.py"
+    ```
+  </Accordion>
+  
+  <Accordion title="Documentation update">
+    ```bash
+    git commit -m "docs: add tutorial for custom strategies
+    
+    Includes step-by-step guide with code examples for implementing
+    custom federated learning strategies."
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Commitizen Configuration
+
+Commitizen is configured in `pyproject.toml`:
+
+```toml pyproject.toml
+[tool.commitizen]
+name = "cz_conventional_commits"
+version_provider = "pep621"
+tag_format = "v$version"
+update_changelog_on_bump = false
+version_files = [
+    "pyproject.toml:^version\\s*=\\s*\"(?P<version>.*)\"$",
+    "src/syft_flwr/__init__.py:^__version__\\s*=\\s*\"(?P<version>.*)\"$",
+    "notebooks/*/pyproject.toml:\"syft-flwr>=(?P<version>[^\"]+)\"",
+]
+```
+
+### Configuration Options
+
+- **`name`**: Uses conventional commits specification
+- **`version_provider`**: Reads version from `pyproject.toml` (PEP 621)
+- **`tag_format`**: Creates git tags like `v0.5.0`
+- **`update_changelog_on_bump`**: Disabled (can be enabled for automated changelogs)
+- **`version_files`**: List of files to update during version bump
+
+## Pre-release Versions
+
+For alpha, beta, or release candidate versions:
+
+<CodeGroup>
+```bash Alpha version
+# Manually edit pyproject.toml
+version = "0.6.0a1"
+
+# Create tag
+git tag v0.6.0a1
+git push origin v0.6.0a1
+```
+
+```bash Beta version
+version = "0.6.0b1"
+
+git tag v0.6.0b1
+git push origin v0.6.0b1
+```
+
+```bash Release candidate
+version = "0.6.0rc1"
+
+git tag v0.6.0rc1
+git push origin v0.6.0rc1
+```
+</CodeGroup>
+
+<Note>
+Pre-release versions are not currently automated. They require manual version editing and tagging.
+</Note>
+
+## Version History
+
+View version history using git:
+
+<CodeGroup>
+```bash List all version tags
+git tag -l "v*"
+```
+
+```bash Show latest version
+git describe --tags --abbrev=0
+```
+
+```bash Show version with commit count
+git describe --tags
+```
+
+```bash View specific version
+git show v0.5.0
+```
+</CodeGroup>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="When to bump versions">
+    - **Patch**: Bug fixes, documentation updates, performance improvements
+    - **Minor**: New features that don't break existing code
+    - **Major**: Breaking changes, API redesigns, removed features
+    
+    If unsure, start with a patch and upgrade to minor/major if needed.
+  </Accordion>
+  
+  <Accordion title="Commit message guidelines">
+    - Use present tense: "add feature" not "added feature"
+    - Be concise but descriptive
+    - Reference issues when applicable: "Fixes #123"
+    - Add body for complex changes
+    - Always mark breaking changes clearly
+  </Accordion>
+  
+  <Accordion title="Release timing">
+    - Don't release too frequently (batch related changes)
+    - Don't wait too long (get fixes out quickly)
+    - Consider impact on downstream users
+    - Coordinate major releases with documentation updates
+  </Accordion>
+  
+  <Accordion title="Version zero (0.x.x)">
+    During 0.x.x versions:
+    
+    - Minor version bumps may include breaking changes
+    - API is not yet stable
+    - Major version 1.0.0 indicates stable API
+    
+    Once at 1.0.0, strictly follow semantic versioning.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+- Learn the [Release Process](/development/releasing)
+- Understand [Testing](/development/testing) before releases
+- Review [Code Quality](/development/code-quality) standards

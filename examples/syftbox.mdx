@@ -1,0 +1,583 @@
+---
+title: "SyftBox Network Deployment"
+description: "Deploy federated learning across real distributed nodes using the SyftBox client for production environments"
+---
+
+SyftBox network deployment enables production-grade federated learning across geographically distributed nodes. Each participant runs the SyftBox client on their own infrastructure, creating a true peer-to-peer privacy-preserving network.
+
+## Overview
+
+SyftBox is a decentralized platform for privacy-preserving computation. It provides:
+
+- **Decentralized Architecture**: No central server or trusted third party
+- **Data Sovereignty**: Data owners maintain full control over their data
+- **Consent-Based Computation**: All jobs require explicit approval
+- **Secure Communication**: Encrypted data exchange between nodes
+- **Production Ready**: Designed for real-world federated learning deployments
+
+## Architecture
+
+```
+┌─────────────────────────────┐
+│   Data Scientist Node       │
+│   ┌─────────────────────┐   │
+│   │  SyftBox Client     │   │
+│   │  - FL Aggregator    │   │
+│   │  - Job Submission   │   │
+│   └─────────────────────┘   │
+└──────────────┬──────────────┘
+               │
+               │ SyftBox P2P Network
+               │ (Encrypted Communication)
+               │
+       ┌───────┴────────┐
+       │                │
+┌──────▼──────┐  ┌──────▼──────┐  ┌──────────────┐
+│ DO1 Node    │  │ DO2 Node    │  │ DO3 Node     │
+│ ┌─────────┐ │  │ ┌─────────┐ │  │ ┌─────────┐  │
+│ │ SyftBox │ │  │ │ SyftBox │ │  │ │ SyftBox │  │
+│ │ Client  │ │  │ │ Client  │ │  │ │ Client  │  │
+│ ├─────────┤ │  │ ├─────────┤ │  │ ├─────────┤  │
+│ │ Private │ │  │ │ Private │ │  │ │ Private │  │
+│ │ Dataset │ │  │ │ Dataset │ │  │ │ Dataset │  │
+│ └─────────┘ │  │ └─────────┘ │  │ └─────────┘  │
+│ Hospital A  │  │ Hospital B  │  │ Hospital C   │
+└─────────────┘  └─────────────┘  └──────────────┘
+```
+
+## Setup
+
+### Prerequisites
+
+- **Operating System**: Linux, macOS, or Windows (WSL recommended)
+- **Python**: >= 3.12
+- **Email**: Valid email address for SyftBox account
+- **Network**: Stable internet connection
+- **Storage**: Sufficient disk space for datasets and models
+
+### Install SyftBox Client
+
+Each participant installs the SyftBox client on their machine:
+
+```bash
+# Install using pip
+pip install syftbox
+
+# Or using uv
+uv pip install syftbox
+```
+
+### Initialize SyftBox
+
+Run the client for the first time:
+
+```bash
+syftbox client
+```
+
+You'll be prompted to:
+1. Enter your email address
+2. Verify your email (check inbox for verification link)
+3. Choose a datasite directory (default: `~/.syftbox/`)
+
+The client will:
+- Create your local datasite
+- Generate cryptographic keys
+- Connect to the SyftBox network
+- Start syncing with peers
+
+### Directory Structure
+
+After initialization, you'll have:
+
+```
+~/.syftbox/
+├── client_config.json      # Client configuration
+├── datasites/
+│   └── <your-email>/
+│       ├── public/         # Publicly readable files
+│       ├── private/        # Private datasets
+│       ├── api_data/       # Shared with approved peers
+│       └── sync/           # Sync state
+├── logs/                   # Client logs
+└── plugins/                # Installed plugins
+```
+
+## Deployment Modes
+
+### Mode 1: Interactive Notebooks
+
+Use Jupyter notebooks with SyftBox client running in the background.
+
+#### Setup
+
+1. **Start SyftBox Client**:
+
+```bash
+# Terminal 1: Run SyftBox client
+syftbox client
+```
+
+2. **Start Jupyter**:
+
+```bash
+# Terminal 2: Start Jupyter
+cd notebooks/fl-diabetes-prediction/distributed/
+jupyter notebook
+```
+
+3. **Follow Notebook Instructions**:
+
+- **Data Owners**: Run `do1.ipynb`, `do2.ipynb`
+- **Data Scientist**: Run `ds.ipynb`
+
+#### Data Owner Workflow
+
+```python
+# In do1.ipynb or do2.ipynb
+import syft_client as sc
+
+# Connect to running SyftBox client
+do_email = "do1@example.com"  # Your SyftBox email
+do_client = sc.login_do(email=do_email)
+
+# Register dataset
+do_client.create_dataset(
+    name="diabetes-data",
+    private_path="/path/to/private/data/",
+    mock_path="/path/to/mock/data/",
+    summary="Private diabetes dataset"
+)
+
+# Later: Check for incoming jobs
+do_client.jobs
+
+# Approve job
+do_client.jobs[0].approve()
+
+# Execute approved jobs
+do_client.process_approved_jobs()
+```
+
+#### Data Scientist Workflow
+
+```python
+# In ds.ipynb
+import syft_client as sc
+import syft_flwr
+
+# Connect to SyftBox
+ds_email = "ds@example.com"
+ds_client = sc.login_ds(email=ds_email)
+
+# Add data owners as peers
+ds_client.add_peer("do1@example.com")
+ds_client.add_peer("do2@example.com")
+
+# Explore datasets
+do1_datasets = ds_client.datasets.get_all(datasite="do1@example.com")
+
+# Submit FL job
+ds_client.submit_python_job(
+    user="do1@example.com",
+    code_path="./fl_diabetes_prediction/",
+    job_name="diabetes-fl-training"
+)
+
+# Run aggregation server
+syft_flwr.run_aggregator(
+    project_path="./fl_diabetes_prediction/",
+    num_rounds=3
+)
+```
+
+### Mode 2: Automated Deployment
+
+Run federated learning as a background service.
+
+#### Setup
+
+1. **Install FL Project**:
+
+```bash
+git clone https://github.com/OpenMined/syft-flwr.git
+cd syft-flwr/notebooks/fl-diabetes-prediction/fl-diabetes-prediction/
+uv sync
+```
+
+2. **Configure SyftBox Integration**:
+
+Edit `pyproject.toml`:
+
+```toml
+[tool.syft_flwr]
+datasites = [
+    "do1@example.com",
+    "do2@example.com",
+    "do3@example.com",
+]
+aggregator = "ds@example.com"
+```
+
+3. **Run on Each Node**:
+
+```bash
+# Set environment variables
+export SYFTBOX_EMAIL="<your-email>"
+export SYFTBOX_FOLDER="~/.syftbox"
+
+# Run main entry point
+python main.py
+```
+
+The system automatically detects whether to run as client or server based on email configuration.
+
+### Mode 3: Docker Deployment
+
+Deploy SyftBox and FL apps using Docker.
+
+#### Build SyftBox Container
+
+```bash
+# Clone SyftBox repository
+git clone https://github.com/OpenMined/syftbox.git
+cd syftbox/docker/
+
+# Build image
+docker build -t syftbox-client .
+
+# Run container
+docker run -d \
+  --name syftbox-do1 \
+  -v /local/data:/data \
+  -e SYFTBOX_EMAIL="do1@example.com" \
+  syftbox-client
+```
+
+#### Attach VSCode to Container
+
+1. Install "Remote - Containers" extension in VSCode
+2. Open Command Palette: `Remote-Containers: Attach to Running Container`
+3. Select `syftbox-do1` container
+4. Open Jupyter notebooks inside container
+
+#### Multi-Container Setup
+
+Run 3 clients in separate containers (for testing):
+
+```bash
+# Data Owner 1
+docker run -d --name syftbox-do1 \
+  -e SYFTBOX_EMAIL="do1@test.com" \
+  syftbox-client
+
+# Data Owner 2
+docker run -d --name syftbox-do2 \
+  -e SYFTBOX_EMAIL="do2@test.com" \
+  syftbox-client
+
+# Data Scientist
+docker run -d --name syftbox-ds \
+  -e SYFTBOX_EMAIL="ds@test.com" \
+  syftbox-client
+```
+
+## Production Best Practices
+
+### 1. Data Governance
+
+**Data Owner Checklist**:
+
+- [ ] Review all submitted job code before approval
+- [ ] Verify job submitter identity
+- [ ] Check privacy implications of requested computations
+- [ ] Ensure compliance with data protection regulations (GDPR, HIPAA)
+- [ ] Monitor job execution and resource usage
+- [ ] Audit job results before sharing
+
+**Code Review Example**:
+
+```python
+# Before approving, inspect the job code
+job = do_client.jobs[0]
+print(job.code_summary)  # High-level summary
+print(job.code_path)     # Path to submitted code
+
+# Review actual code files
+import os
+for root, dirs, files in os.walk(job.code_path):
+    for file in files:
+        if file.endswith('.py'):
+            print(f"\n=== {file} ===")
+            with open(os.path.join(root, file)) as f:
+                print(f.read())
+
+# Only approve if code is safe
+if code_looks_safe:
+    job.approve()
+else:
+    job.reject(reason="Suspicious data access patterns detected")
+```
+
+### 2. Security
+
+**Network Security**:
+
+```bash
+# Run SyftBox behind firewall
+# Only expose necessary ports
+sudo ufw allow from <trusted-ip> to any port 8080
+```
+
+**Data Encryption**:
+
+SyftBox automatically encrypts:
+- Data in transit (TLS)
+- Peer-to-peer communication
+- Job submissions
+
+For additional security:
+
+```python
+# Encrypt datasets before registering
+from syft_flwr.crypto import encrypt_dataset
+
+encrypt_dataset(
+    source="/path/to/data/",
+    destination="/path/to/encrypted/",
+    key=secret_key
+)
+
+do_client.create_dataset(
+    name="encrypted-data",
+    private_path="/path/to/encrypted/"
+)
+```
+
+### 3. Monitoring
+
+**SyftBox Logs**:
+
+```bash
+# View client logs
+tail -f ~/.syftbox/logs/client.log
+
+# Monitor network activity
+grep "peer_sync" ~/.syftbox/logs/client.log
+
+# Track job submissions
+grep "job_submit" ~/.syftbox/logs/client.log
+```
+
+**Custom Monitoring**:
+
+```python
+import syft_client as sc
+from datetime import datetime
+
+def monitor_jobs():
+    client = sc.login_do(email="do1@example.com")
+    
+    while True:
+        jobs = client.jobs
+        pending = [j for j in jobs if j.status == "pending"]
+        
+        if pending:
+            print(f"[{datetime.now()}] {len(pending)} pending jobs")
+            for job in pending:
+                print(f"  - {job.name} from {job.submitter}")
+        
+        time.sleep(60)  # Check every minute
+
+monitor_jobs()
+```
+
+### 4. Fault Tolerance
+
+**Handle Client Failures**:
+
+```toml
+# In pyproject.toml
+[tool.flwr.app.config]
+min-available-clients = 2     # Can start with 2 out of 3 clients
+min-fit-clients = 2            # Need 2 clients for training
+fraction-fit = 0.66            # Sample 66% of available clients
+```
+
+**Automatic Reconnection**:
+
+```bash
+# Use systemd to restart SyftBox on failure (Linux)
+sudo nano /etc/systemd/system/syftbox.service
+```
+
+```ini
+[Unit]
+Description=SyftBox Client
+After=network.target
+
+[Service]
+Type=simple
+User=<your-user>
+ExecStart=/usr/local/bin/syftbox client
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl enable syftbox
+sudo systemctl start syftbox
+```
+
+### 5. Resource Management
+
+**Limit Resource Usage**:
+
+```python
+# Limit CPU/GPU usage per job
+import os
+os.environ["OMP_NUM_THREADS"] = "4"  # Limit CPU threads
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # Use only GPU 0
+```
+
+**Job Scheduling**:
+
+```python
+# Process jobs during off-peak hours
+import schedule
+import time
+
+def process_jobs():
+    do_client.process_approved_jobs()
+
+# Run jobs at 2 AM daily
+schedule.every().day.at("02:00").do(process_jobs)
+
+while True:
+    schedule.run_pending()
+    time.sleep(3600)
+```
+
+## Example: Multi-Hospital Deployment
+
+### Scenario
+
+3 hospitals want to collaboratively train a diabetes prediction model:
+
+- **Hospital A**: 500 patient records
+- **Hospital B**: 300 patient records
+- **Hospital C**: 400 patient records
+- **Research Institute**: Coordinates the study
+
+### Deployment
+
+**Hospital A (Data Owner)**:
+
+```bash
+# Install SyftBox
+pip install syftbox
+
+# Start client
+syftbox client
+# Email: hospitala@health.org
+
+# Register dataset
+python register_dataset.py \
+  --name diabetes-data \
+  --private-path /secure/storage/diabetes/ \
+  --summary "Hospital A diabetes records (n=500)"
+```
+
+**Hospitals B & C**: Repeat the same process with their data.
+
+**Research Institute (Data Scientist)**:
+
+```bash
+# Install SyftBox
+pip install syftbox
+
+# Start client
+syftbox client
+# Email: research@institute.edu
+
+# Run federated learning
+python run_federated_study.py \
+  --participants hospitala@health.org hospitalb@health.org hospitalc@health.org \
+  --rounds 5 \
+  --model diabetes-prediction
+```
+
+### Results
+
+- **Privacy**: No hospital shares patient records
+- **Compliance**: Meets HIPAA requirements
+- **Performance**: Model trained on 1,200 total records
+- **Governance**: Each hospital approved all computation
+
+## Troubleshooting
+
+### Client Won't Connect
+
+```bash
+# Check network connectivity
+ping syftbox.net
+
+# Verify email
+syftbox verify-email
+
+# Restart client
+syftbox client --reset
+```
+
+### Peers Not Syncing
+
+```bash
+# Check peer status
+syftbox peers list
+
+# Manually sync
+syftbox sync --force
+```
+
+### Job Stuck in Pending
+
+```python
+# Check job status
+job = do_client.jobs[0]
+print(job.status)
+print(job.error_message)  # If any
+
+# Re-submit if needed
+job.resubmit()
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Run Local Simulation First" icon="laptop" href="/examples/local-simulation">
+    Test your setup locally before deploying.
+  </Card>
+  
+  <Card title="Try Google Colab" icon="cloud" href="/examples/google-drive">
+    Practice with zero-setup cloud deployment.
+  </Card>
+  
+  <Card title="API Reference" icon="code" href="/api/bootstrap">
+    Explore the complete Syft-Flwr API.
+  </Card>
+  
+  <Card title="Join Community" icon="users" href="https://slack.openmined.org">
+    Get help in the #community-federated-learning channel.
+  </Card>
+</CardGroup>
+
+## Resources
+
+- [SyftBox Documentation](https://syftbox.net)
+- [SyftBox GitHub](https://github.com/OpenMined/syftbox)
+- [Syft-Client Docs](https://openmined.github.io/syft-client/)
+- [OpenMined Community](https://openmined.org)
+- [Federated Learning Co-Design Program](https://openmined.org/federated-learning/co-design/)

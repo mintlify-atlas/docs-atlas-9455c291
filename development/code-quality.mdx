@@ -1,0 +1,371 @@
+---
+title: "Code Quality"
+description: "Code quality tools, linting, formatting, and pre-commit hooks"
+---
+
+Syft-Flwr uses automated tools to maintain code quality and consistency across the codebase.
+
+## Ruff Linter and Formatter
+
+The project uses [Ruff](https://docs.astral.sh/ruff/), a fast Python linter and formatter written in Rust. Ruff combines the functionality of multiple tools (Flake8, Black, isort, etc.) into a single, blazing-fast tool.
+
+### Running Ruff
+
+<CodeGroup>
+```bash Check for issues
+uv run ruff check .
+```
+
+```bash Auto-fix issues
+uv run ruff check . --fix
+```
+
+```bash Format code
+uv run ruff format .
+```
+
+```bash Check and format together
+uv run ruff check . --fix && uv run ruff format .
+```
+</CodeGroup>
+
+### Ruff Configuration
+
+Ruff is configured in `pyproject.toml`:
+
+```toml pyproject.toml
+[tool.ruff]
+exclude = [".archive"]
+
+[tool.ruff.lint]
+extend-select = ["I"]  # Enable isort-style import sorting
+
+[tool.ruff.lint.per-file-ignores]
+"**/__init__.py" = ["F401"]  # Allow unused imports in __init__.py
+```
+
+### What Ruff Checks
+
+<AccordionGroup>
+  <Accordion title="Code Style">
+    - Line length (default 88 characters)
+    - Indentation and whitespace
+    - Quote style consistency
+    - Trailing commas
+  </Accordion>
+  
+  <Accordion title="Import Organization">
+    - Import sorting (isort-compatible)
+    - Unused imports
+    - Import order and grouping
+    - Duplicate imports
+  </Accordion>
+  
+  <Accordion title="Code Quality">
+    - Unused variables
+    - Undefined names
+    - Syntax errors
+    - Common anti-patterns
+    - Type annotation issues
+  </Accordion>
+  
+  <Accordion title="Best Practices">
+    - Docstring presence and format
+    - Naming conventions
+    - Complexity warnings
+    - Security vulnerabilities
+  </Accordion>
+</AccordionGroup>
+
+## Pre-commit Hooks
+
+Pre-commit hooks automatically check code quality before each commit, ensuring that only clean code enters the repository.
+
+### Installing Pre-commit Hooks
+
+<Steps>
+  <Step title="Install hooks">
+    Install the pre-commit hooks in your local repository:
+    
+    ```bash
+    uv run pre-commit install
+    ```
+  </Step>
+  
+  <Step title="Verify installation">
+    Make a test commit to verify hooks are working:
+    
+    ```bash
+    git commit --allow-empty -m "test: verify pre-commit hooks"
+    ```
+  </Step>
+</Steps>
+
+### Running Pre-commit Manually
+
+<CodeGroup>
+```bash Run on staged files
+uv run pre-commit run
+```
+
+```bash Run on all files
+uv run pre-commit run --all-files
+```
+
+```bash Run specific hook
+uv run pre-commit run ruff --all-files
+```
+
+```bash Update hooks to latest versions
+uv run pre-commit autoupdate
+```
+</CodeGroup>
+
+### Configured Hooks
+
+The project uses the following pre-commit hooks (configured in `.pre-commit-config.yaml`):
+
+#### Standard Pre-commit Hooks
+
+<CardGroup cols={2}>
+  <Card title="check-ast" icon="code">
+    Validates Python syntax by checking the abstract syntax tree
+  </Card>
+  
+  <Card title="trailing-whitespace" icon="broom">
+    Removes trailing whitespace from all files
+  </Card>
+  
+  <Card title="check-docstring-first" icon="book">
+    Ensures docstrings appear before code in modules
+  </Card>
+  
+  <Card title="check-json" icon="brackets-curly">
+    Validates JSON file syntax (excludes .vscode)
+  </Card>
+  
+  <Card title="check-yaml" icon="file-code">
+    Validates YAML file syntax
+  </Card>
+  
+  <Card title="check-merge-conflict" icon="code-merge">
+    Detects merge conflict markers in files
+  </Card>
+  
+  <Card title="check-executables-have-shebangs" icon="terminal">
+    Ensures executable files have proper shebangs
+  </Card>
+  
+  <Card title="debug-statements" icon="bug">
+    Detects debug statements like pdb.set_trace()
+  </Card>
+  
+  <Card title="requirements-txt-fixer" icon="wrench">
+    Sorts and fixes requirements.txt files
+  </Card>
+  
+  <Card title="mixed-line-ending" icon="align-left">
+    Ensures consistent line endings (LF)
+  </Card>
+</CardGroup>
+
+#### Ruff Hooks
+
+<CardGroup cols={2}>
+  <Card title="ruff" icon="check">
+    Runs Ruff linter with auto-fix on Python, .pyi, and Jupyter files
+    
+    Arguments: `--fix`, `--exit-non-zero-on-fix`, `--show-fixes`
+  </Card>
+  
+  <Card title="ruff-format" icon="paintbrush">
+    Runs Ruff formatter on Python, .pyi, and Jupyter files
+  </Card>
+</CardGroup>
+
+#### Notebook Hooks
+
+<Card title="nbstripout" icon="notebook">
+  Strips output from Jupyter notebooks before committing
+  
+  This keeps notebooks clean and prevents large diffs from cell outputs.
+</Card>
+
+### Pre-commit Configuration
+
+The complete `.pre-commit-config.yaml` configuration:
+
+```yaml .pre-commit-config.yaml
+repos:
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: v4.5.0
+  hooks:
+  - id: check-ast
+    always_run: true
+  - id: trailing-whitespace
+    always_run: true
+  - id: check-docstring-first
+    always_run: true
+  - id: check-json
+    always_run: true
+    exclude: ".vscode"
+  - id: check-yaml
+    always_run: true
+  - id: check-merge-conflict
+    always_run: true
+    args: [ "--assume-in-merge" ]
+  - id: check-executables-have-shebangs
+    always_run: true
+  - id: debug-statements
+    always_run: true
+  - id: requirements-txt-fixer
+    always_run: true
+  - id: mixed-line-ending
+    args: [ "--fix=lf" ]
+
+- repo: https://github.com/astral-sh/ruff-pre-commit
+  rev: "v0.6.5"
+  hooks:
+  - id: ruff
+    args: [ --fix, --exit-non-zero-on-fix, --show-fixes ]
+    types_or: [ python, pyi, jupyter ]
+  - id: ruff-format
+    types_or: [ python, pyi, jupyter ]
+
+- repo: https://github.com/kynan/nbstripout
+  rev: 0.7.1
+  hooks:
+  - id: nbstripout
+```
+
+## Bypassing Hooks
+
+In rare cases, you may need to bypass pre-commit hooks:
+
+<Warning>
+Only bypass hooks when absolutely necessary. Bypassing hooks can introduce code quality issues.
+</Warning>
+
+<CodeGroup>
+```bash Skip all hooks
+git commit --no-verify -m "commit message"
+```
+
+```bash Skip specific hook
+SKIP=ruff git commit -m "commit message"
+```
+
+```bash Skip multiple hooks
+SKIP=ruff,trailing-whitespace git commit -m "commit message"
+```
+</CodeGroup>
+
+## Code Quality Workflow
+
+Follow this workflow to maintain code quality:
+
+<Steps>
+  <Step title="Write code">
+    Implement your changes following Python best practices
+  </Step>
+  
+  <Step title="Format code">
+    Run Ruff formatter to ensure consistent style:
+    
+    ```bash
+    uv run ruff format .
+    ```
+  </Step>
+  
+  <Step title="Fix linting issues">
+    Run Ruff linter and fix auto-fixable issues:
+    
+    ```bash
+    uv run ruff check . --fix
+    ```
+  </Step>
+  
+  <Step title="Run tests">
+    Ensure all tests pass:
+    
+    ```bash
+    just test-unit
+    ```
+  </Step>
+  
+  <Step title="Commit changes">
+    Commit your changes. Pre-commit hooks will run automatically:
+    
+    ```bash
+    git add .
+    git commit -m "feat: your feature description"
+    ```
+  </Step>
+</Steps>
+
+## CI Code Quality Checks
+
+Code quality checks run automatically in CI on every push and pull request:
+
+- **Ruff linting**: Checks for code quality issues
+- **Ruff formatting**: Verifies code is properly formatted
+- **Pre-commit hooks**: All configured hooks run in CI
+- **Type checking**: Static type analysis (if configured)
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="General Guidelines">
+    - Follow PEP 8 style guide
+    - Write clear, descriptive variable and function names
+    - Keep functions small and focused
+    - Add docstrings to all public functions and classes
+    - Use type hints for function parameters and return values
+  </Accordion>
+  
+  <Accordion title="Import Organization">
+    Organize imports in three groups:
+    
+    1. Standard library imports
+    2. Third-party imports
+    3. Local application imports
+    
+    Ruff automatically sorts imports within these groups.
+  </Accordion>
+  
+  <Accordion title="Docstrings">
+    Use Google-style or NumPy-style docstrings:
+    
+    ```python
+    def function(param1: str, param2: int) -> bool:
+        """Brief description.
+        
+        Detailed description if needed.
+        
+        Args:
+            param1: Description of param1
+            param2: Description of param2
+            
+        Returns:
+            Description of return value
+            
+        Raises:
+            ValueError: When invalid input is provided
+        """
+        return True
+    ```
+  </Accordion>
+  
+  <Accordion title="Error Handling">
+    - Use specific exception types
+    - Provide informative error messages
+    - Clean up resources in finally blocks
+    - Use context managers (with statements) when possible
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+- Learn about the [Release Process](/development/releasing)
+- Understand [Versioning](/development/versioning) strategy
+- Review [Testing](/development/testing) guidelines

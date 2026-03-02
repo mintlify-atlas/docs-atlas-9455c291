@@ -1,0 +1,558 @@
+---
+title: Setting Up Your Local SyftBox Environment
+description: Complete guide for setting up a local SyftBox environment for federated learning
+---
+
+This tutorial guides you through setting up a local SyftBox environment for running federated learning (FL) projects with low latency and full privacy features.
+
+## What is SyftBox?
+
+SyftBox is a file-based communication layer that enables:
+- **Offline-capable FL**: Asynchronous model training across participants
+- **Privacy-first**: Data never leaves the owner's machine
+- **Zero servers**: Communication happens through synced folders
+- **End-to-end encryption**: Secure message passing with RPC and crypto
+
+## Architecture
+
+A local SyftBox network consists of:
+
+```
+~/SyftBox/                    # Your SyftBox directory
+├── datasites/                 # Synced datasites from peers
+│   ├── do1@openmined.org/
+│   ├── do2@openmined.org/
+│   └── ds@openmined.org/
+├── apps/                      # Installed SyftBox apps
+├── apis/                      # FL message exchange happens here
+└── sync/                      # File sync metadata
+```
+
+<Steps>
+
+### Install SyftBox
+
+Install SyftBox using the official installer:
+
+#### On macOS and Linux
+
+```bash
+curl -fsSL https://syftbox.net/install.sh | sh
+```
+
+#### On Windows
+
+Download and run the installer from:
+```
+https://www.syftbox.net/
+```
+
+#### Verify Installation
+
+```bash
+syftbox --version
+```
+
+You should see output like:
+```
+SyftBox version 0.1.0
+```
+
+<Tip>
+  You can also install the SyftBox UI app from [syftbox.net](https://www.syftbox.net/) for a graphical interface.
+</Tip>
+
+### Create Your Account
+
+Run the SyftBox client for the first time:
+
+```bash
+syftbox client
+```
+
+You'll be prompted to:
+1. Enter your email address (this becomes your datasite ID)
+2. Choose a SyftBox directory location (default: `~/SyftBox`)
+3. Configure sync settings
+
+The client will:
+- Create your local SyftBox directory
+- Generate encryption keys
+- Start the sync service
+- Connect to the SyftBox network
+
+<Note>
+  Your email serves as your unique identifier across the SyftBox network. Use a valid email that you control.
+</Note>
+
+### Explore the Directory Structure
+
+After initialization, examine your SyftBox directory:
+
+```bash
+ls -la ~/SyftBox
+```
+
+You should see:
+
+```
+~/SyftBox/
+├── .syftbox/              # Configuration and keys
+│   ├── config.json        # Client configuration
+│   └── client_config.json # Connection settings
+├── datasites/             # Peer datasites appear here
+├── public/                # Your public folder (readable by all)
+├── private/               # Your private data (only you can read)
+├── api_data/              # API and app data
+└── sync/                  # Sync metadata
+```
+
+### Configure as Data Owner
+
+If you're a data owner, set up your datasite:
+
+```python
+import syft_rds as sy
+
+# Initialize as admin on your own datasite
+do_email = "do1@openmined.org"  # Your email
+do_client = sy.init_session(host=do_email, email=do_email)
+
+# Verify admin access
+print(f"Admin access: {do_client.is_admin}")
+```
+
+#### Create a Dataset
+
+Register your private dataset with SyftBox:
+
+```python
+from pathlib import Path
+
+# Prepare your dataset
+DATASET_DIR = Path("./my-dataset").absolute()
+
+# Ensure it has the required structure:
+# my-dataset/
+# ├── private/
+# │   ├── train.csv
+# │   └── test.csv
+# └── mock/
+#     ├── train.csv
+#     └── test.csv
+
+# Create the dataset in SyftBox
+do_client.dataset.create(
+    name="pima-indians-diabetes-database",
+    asset_path=DATASET_DIR,
+    description="Diabetes prediction dataset",
+)
+
+print("✅ Dataset created successfully")
+```
+
+<Warning>
+  **Private data** (`private/`) stays on your machine and is never shared. Only **mock data** (`mock/`) is accessible to data scientists for development.
+</Warning>
+
+#### Verify Dataset Registration
+
+```python
+# List all datasets
+datasets = do_client.dataset.get_all()
+for ds in datasets:
+    print(f"Dataset: {ds.name}")
+    print(f"  Private path: {ds.get_private_path()}")
+    print(f"  Mock path: {ds.get_mock_path()}")
+```
+
+### Configure as Data Scientist
+
+If you're a data scientist, connect to data owners:
+
+```python
+import syft_rds as sy
+
+# Initialize your session
+ds_email = "ds@openmined.org"
+ds = sy.init_session(host=ds_email, email=ds_email)
+
+print(f"Data scientist logged in: {ds_email}")
+```
+
+#### Connect to Data Owners
+
+```python
+# Connect to first data owner
+do1_email = "do1@openmined.org"
+do1_client = sy.init_session(
+    host=do1_email,
+    email=ds_email,  # Login as yourself (guest)
+    start_syft_event_server=False,
+)
+
+print(f"Connected to {do1_email}")
+print(f"Admin access: {do1_client.is_admin}")  # Should be False
+
+# Connect to second data owner
+do2_email = "do2@openmined.org"
+do2_client = sy.init_session(
+    host=do2_email,
+    email=ds_email,
+    start_syft_event_server=False,
+)
+
+print(f"Connected to {do2_email}")
+```
+
+#### Explore Available Datasets
+
+```python
+# Get DO1's datasets
+do1_datasets = do1_client.dataset.get_all()
+for ds in do1_datasets:
+    print(f"\nDataset: {ds.name}")
+    print(f"  Description: {ds.description}")
+    
+    # You can access mock data
+    mock_path = ds.get_mock_path()
+    print(f"  Mock data: {mock_path}")
+    
+    # But NOT private data (will raise error)
+    try:
+        private_path = ds.get_private_path()
+    except Exception as e:
+        print(f"  Private data: ❌ Access denied")
+```
+
+<Note>
+  As a guest user, you can only access mock data. Private data requires admin privileges.
+</Note>
+
+### Set Up Multi-Machine Network
+
+For a realistic FL setup across multiple machines:
+
+#### Machine 1 (Data Owner 1)
+
+```bash
+# On first machine
+syftbox client
+# Enter: do1@openmined.org
+```
+
+#### Machine 2 (Data Owner 2)
+
+```bash
+# On second machine  
+syftbox client
+# Enter: do2@openmined.org
+```
+
+#### Machine 3 (Data Scientist)
+
+```bash
+# On third machine
+syftbox client
+# Enter: ds@openmined.org
+```
+
+All machines will automatically sync through the SyftBox network.
+
+### Configure Environment Variables
+
+Set up environment variables for FL execution:
+
+```python
+import os
+from pathlib import Path
+
+# Point to your SyftBox config
+ds = sy.init_session(host="ds@openmined.org", email="ds@openmined.org")
+os.environ["SYFTBOX_CLIENT_CONFIG_PATH"] = str(ds.syftbox_client.config_path)
+
+# Configure logging
+os.environ["LOGURU_LEVEL"] = "DEBUG"
+
+# Set message timeout (in seconds)
+os.environ["SYFT_FLWR_MSG_TIMEOUT"] = "30"
+
+print("✅ Environment configured")
+```
+
+### Test Local Simulation
+
+Before running distributed FL, test with local simulation:
+
+```python
+import syft_flwr
+from pathlib import Path
+
+# Your FL project directory
+PROJECT_PATH = Path("./fl-diabetes-prediction")
+
+# Mock dataset paths from data owners
+mock_paths = [
+    do1_client.dataset.get(name="pima-indians-diabetes-database").get_mock_path(),
+    do2_client.dataset.get(name="pima-indians-diabetes-database").get_mock_path(),
+]
+
+print(f"Mock paths: {mock_paths}")
+
+# Run simulation
+syft_flwr.run(PROJECT_PATH, mock_paths)
+```
+
+This runs a local simulation with:
+- 2 client threads (simulating data owners)
+- 1 server thread (data scientist)
+- Communication via local files
+
+Check logs in `{PROJECT_PATH}/simulation_logs/`:
+
+```
+simulation_logs/
+├── client_0.log
+├── client_1.log
+└── server.log
+```
+
+### Enable End-to-End Encryption
+
+By default, SyftBox uses end-to-end encryption for FL messages:
+
+```python
+import os
+
+# Encryption is enabled by default
+# To explicitly control:
+os.environ["SYFT_FLWR_ENCRYPTION_ENABLED"] = "true"  # Enable
+# os.environ["SYFT_FLWR_ENCRYPTION_ENABLED"] = "false"  # Disable (dev only)
+```
+
+Encryption bootstrap happens automatically:
+
+```python
+from syft_crypto.x3dh_bootstrap import ensure_bootstrap
+
+# This runs automatically in syft_flwr
+client = ensure_bootstrap(syftbox_client)
+print("🔐 End-to-end encryption enabled")
+```
+
+<Warning>
+  Only disable encryption for local development. Production FL should always use encryption.
+</Warning>
+
+### Run Distributed FL
+
+Now run FL across your distributed network:
+
+#### 1. Bootstrap the Project
+
+```python
+import syft_flwr
+
+PROJECT_PATH = Path("./fl-diabetes-prediction")
+do_emails = ["do1@openmined.org", "do2@openmined.org"]
+ds_email = "ds@openmined.org"
+
+syft_flwr.bootstrap(
+    PROJECT_PATH,
+    aggregator=ds_email,
+    datasites=do_emails,
+    transport="syftbox",  # Use local SyftBox
+)
+```
+
+#### 2. Submit Jobs to Data Owners
+
+```python
+# Clean before submitting
+!rm -rf {PROJECT_PATH / "fl_diabetes_prediction" / "__pycache__"}
+!rm -rf {PROJECT_PATH / "simulation_logs"}
+
+# Submit to DO1
+do1_client.job.submit(
+    name="fl-diabetes-prediction",
+    user_code_path=PROJECT_PATH,
+    dataset_name="pima-indians-diabetes-database",
+    entrypoint="main.py",
+)
+
+# Submit to DO2
+do2_client.job.submit(
+    name="fl-diabetes-prediction",
+    user_code_path=PROJECT_PATH,
+    dataset_name="pima-indians-diabetes-database",
+    entrypoint="main.py",
+)
+
+print("✅ Jobs submitted, waiting for approval...")
+```
+
+#### 3. Data Owners Approve Jobs
+
+On each data owner machine:
+
+```python
+# Data owner reviews and approves
+jobs = do1_client.job.get_all()
+pending_job = jobs[0]
+
+print(f"Job from: {pending_job.created_by}")
+print(f"Code path: {pending_job.user_code_path}")
+
+# Approve the job
+do1_client.job.approve(pending_job)
+print("✅ Job approved")
+```
+
+#### 4. Start the FL Server
+
+```python
+# Data scientist submits server job to themselves
+server_job = ds.job.submit(
+    name="fl-diabetes-prediction-server",
+    user_code_path=PROJECT_PATH,
+    entrypoint="main.py",
+)
+
+# Auto-approve own job
+ds.job.approve(server_job)
+
+# Run the server (blocking)
+ds.run_private(server_job, blocking=True)
+```
+
+#### 5. Monitor Results
+
+```python
+# View logs
+ds.job.show_logs(server_job)
+
+# Check output directory
+output_dir = ds.job.get_output_dir(server_job)
+print(f"Results saved to: {output_dir}")
+
+# List model checkpoints
+weights_dir = output_dir / "weights"
+for weight_file in weights_dir.glob("*.safetensors"):
+    print(f"  - {weight_file.name}")
+```
+
+### Monitor SyftBox Sync
+
+Check that files are syncing properly:
+
+```bash
+# View sync status
+syftbox status
+
+# Check recent sync activity
+tail -f ~/SyftBox/.syftbox/logs/sync.log
+```
+
+### Clean Up
+
+After completing your FL experiment:
+
+```python
+# Remove temporary files
+!rm -rf {PROJECT_PATH / "main.py"}
+!rm -rf {PROJECT_PATH / "**/__pycache__"}
+!rm -rf {PROJECT_PATH / "simulation_logs"}
+
+print("✅ Cleanup complete")
+```
+
+</Steps>
+
+## SyftBox vs Google Drive Transport
+
+| Feature | SyftBox (Local) | Google Drive (P2P) |
+|---------|----------------|--------------------|
+| **Latency** | Low (less than 1s) | High (30-60s) |
+| **Encryption** | ✅ End-to-end | ❌ No encryption |
+| **Setup** | Install client | Just browser |
+| **Offline** | ✅ Full support | Limited |
+| **Networking** | None required | None required |
+| **Best for** | Production FL | Quick experiments |
+
+## Folder Permissions
+
+SyftBox enforces strict folder permissions:
+
+```
+private/          # Only you (admin) can read/write
+public/           # Everyone can read, only you can write  
+api_data/         # Apps can read/write with permissions
+datasites/{peer}/ # Read-only view of peer's public data
+```
+
+## Advanced Configuration
+
+Customize your SyftBox setup:
+
+### Change Sync Directory
+
+```bash
+syftbox client --path /custom/path/to/SyftBox
+```
+
+### Adjust Sync Frequency
+
+Edit `~/SyftBox/.syftbox/config.json`:
+
+```json
+{
+  "sync_interval_seconds": 5,
+  "message_timeout_seconds": 30
+}
+```
+
+### Use Custom Network
+
+For private networks:
+
+```bash
+syftbox client --network-url https://your-syftbox-server.com
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="SyftBox client won't start">
+    Check that port 8080 isn't in use:
+    ```bash
+    lsof -i :8080
+    ```
+    Kill any conflicting process or configure a different port.
+  </Accordion>
+  
+  <Accordion title="Datasites not syncing">
+    Verify:
+    - SyftBox client is running (`syftbox status`)
+    - You're connected to the network
+    - Check sync logs: `tail -f ~/SyftBox/.syftbox/logs/sync.log`
+  </Accordion>
+  
+  <Accordion title="Permission denied on dataset">
+    Ensure:
+    - You're using the correct client (admin for private, guest for mock)
+    - Dataset is properly registered
+    - Paths exist and have correct permissions
+  </Accordion>
+  
+  <Accordion title="FL messages not arriving">
+    - Increase timeout: `os.environ["SYFT_FLWR_MSG_TIMEOUT"] = "60"`
+    - Check `app_name` matches in all participants
+    - Verify encryption keys are bootstrapped
+  </Accordion>
+</AccordionGroup>
+
+## What's Next?
+
+- Try the [first FL project tutorial](/tutorials/first-fl-project)
+- Learn about [custom strategies](/tutorials/custom-strategies)
+- Explore [example notebooks](https://github.com/OpenMined/syft-flwr/tree/main/notebooks)

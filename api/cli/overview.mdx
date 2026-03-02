@@ -1,0 +1,104 @@
+---
+title: CLI Commands Overview
+description: Complete reference for the syft-flwr command-line interface
+---
+
+The `syft-flwr` CLI provides commands to bootstrap Flower projects for federated learning with file-based communication and run simulations locally.
+
+## Installation
+
+The CLI is automatically available after installing syft-flwr:
+
+```bash
+pip install syft-flwr
+```
+
+## Available Commands
+
+<CardGroup cols={2}>
+  <Card title="bootstrap" icon="rocket" href="/api/cli/bootstrap">
+    Convert a Flower project to syft-flwr with datasite configuration
+  </Card>
+  <Card title="run" icon="play" href="/api/cli/run">
+    Run a syft-flwr project in simulation mode with mock data
+  </Card>
+  <Card title="version" icon="tag" href="/api/cli/version">
+    Display the installed syft-flwr version
+  </Card>
+</CardGroup>
+
+## Getting Help
+
+Display help for any command:
+
+```bash
+syft-flwr --help
+syft-flwr bootstrap --help
+syft-flwr run --help
+```
+
+Help options are available with both `-h` and `--help` flags.
+
+## Common Workflow
+
+Typical usage follows this pattern:
+
+1. **Create a Flower project** using standard Flower tools
+2. **Bootstrap** the project with syft-flwr configuration:
+   ```bash
+   syft-flwr bootstrap ./my-fl-project \
+     --aggregator ds@example.com \
+     --datasites do1@example.com,do2@example.com
+   ```
+3. **Run simulations** with mock data for testing:
+   ```bash
+   syft-flwr run ./my-fl-project \
+     --mock-dataset-paths ./data/client1,./data/client2
+   ```
+
+## Command Structure
+
+All commands follow this structure:
+
+```bash
+syft-flwr [COMMAND] [ARGUMENTS] [OPTIONS]
+```
+
+- **COMMAND**: One of `bootstrap`, `run`, or `version`
+- **ARGUMENTS**: Required positional arguments (e.g., project directory)
+- **OPTIONS**: Optional flags and parameters (prefixed with `-` or `--`)
+
+## Interactive Prompts
+
+When required options are omitted, the CLI will prompt you interactively:
+
+```bash
+$ syft-flwr bootstrap ./my-project
+Enter the datasite email of the Aggregator (Flower Server): ds@example.com
+Enter a comma-separated email of datasites of the Flower Clients: do1@example.com,do2@example.com
+```
+
+This makes the CLI beginner-friendly while still supporting automation with flags.
+
+## Output Format
+
+The CLI uses colored output for better readability:
+
+- **Cyan**: Informational messages about operations in progress
+- **Green**: Success messages
+- **Red**: Error messages
+
+## Exit Codes
+
+- `0`: Command succeeded
+- `1`: Command failed with an error
+
+## Version Information
+
+Current version: `0.5.0`
+
+Check your installed version:
+
+```bash
+syft-flwr version
+```

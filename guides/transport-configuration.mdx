@@ -1,0 +1,468 @@
+---
+title: Transport Configuration
+description: Configure different transport backends for federated learning communication in Syft-Flwr
+---
+
+## Overview
+
+Syft-Flwr supports multiple transport mechanisms for federated learning communication. The transport layer handles how FL messages are sent between the aggregator (server) and datasites (clients).
+
+## Transport Options
+
+Syft-Flwr provides two transport backends:
+
+<CardGroup cols={2}>
+  <Card title="SyftBox" icon="box">
+    Local SyftBox client with RPC and end-to-end encryption
+  </Card>
+  <Card title="P2P" icon="share-nodes">
+    Peer-to-peer file sync via Google Drive or OneDrive
+  </Card>
+</CardGroup>
+
+## SyftBox Transport
+
+### Overview
+
+The default transport using the SyftBox Go client with RPC (Remote Procedure Call) and built-in encryption.
+
+### Configuration
+
+```python
+from syft_flwr.bootstrap import bootstrap
+
+bootstrap(
+    flwr_project_dir="./my-project",
+    aggregator="server@example.com",
+    datasites=["client1@example.com", "client2@example.com"],
+    transport="syftbox"
+)
+```
+
+### Architecture
+
+<Steps>
+  <Step title="Client Setup">
+    Uses `syft_core.Client` for native SyftBox integration:
+
+    ```python
+    # rpc/factory.py:13-34
+    def create_rpc(
+        client: SyftFlwrClient,
+        app_name: str,
+    ) -> SyftFlwrRpc:
+        native_client = client.get_client()
+        
+        if isinstance(native_client, SyftCoreNativeClient):
+            logger.debug("Creating SyftRpc (syft_core path)")
+            return SyftRpc(client=native_client, app_name=app_name)
+    ```
+  </Step>
+
+  <Step title="RPC Communication">
+    Messages sent via RPC futures database:
+
+    ```python
+    # rpc/protocol.py:5-56
+    class SyftFlwrRpc(ABC):
+        @abstractmethod
+        def send(
+            self,
+            to_email: str,
+            app_name: str,
+            endpoint: str,
+            body: bytes,
+            encrypt: bool = False,
+        ) -> str:
+            """Send a message to a recipient.
+            
+            Returns:
+                Future ID for tracking the response
+            """
+    ```
+  </Step>
+
+  <Step title="End-to-End Encryption">
+    Automatic encryption using X3DH key exchange:
+
+    ```python
+    # utils.py:90-95
+    if encryption_enabled and not isinstance(syftbox_client, SyftP2PClient):
+        syftbox_client = ensure_bootstrap(syftbox_client)
+        logger.info("🔐 End-to-end encryption is ENABLED for FL messages")
+        return syftbox_client, encryption_enabled, f"flwr/{app_name}"
+    ```
+  </Step>
+</Steps>
+
+### Features
+
+- **End-to-end encryption** - Messages encrypted using X3DH and Double Ratchet
+- **RPC with futures** - Asynchronous message passing with response tracking
+- **DID-based identity** - Decentralized identifiers for participant authentication
+- **Local file sync** - Uses SyftBox Go client for efficient file synchronization
+
+### Use Cases
+
+- Production deployments with security requirements
+- On-premise installations
+- Healthcare and financial applications
+- Any scenario requiring end-to-end encryption
+
+## P2P Transport
+
+### Overview
+
+File-based transport using cloud storage (Google Drive, OneDrive) for peer-to-peer synchronization.
+
+### Configuration
+
+```python
+from syft_flwr.bootstrap import bootstrap
+
+bootstrap(
+    flwr_project_dir="./my-project",
+    aggregator="server@example.com",
+    datasites=["client1@example.com", "client2@example.com"],
+    transport="p2p"
+)
+```
+
+### Architecture
+
+<Steps>
+  <Step title="Client Setup">
+    Uses `SyftP2PClient` for file-based communication:
+
+    ```python
+    # rpc/factory.py:35-40
+    elif isinstance(native_client, SyftP2PClient):
+        logger.debug("Creating P2PFileRpc (syft_client path)")
+        return P2PFileRpc(
+            sender_email=client.email,
+            app_name=app_name,
+        )
+    ```
+  </Step>
+
+  <Step title="File-Based RPC">
+    Messages written to shared cloud storage:
+
+    ```python
+    # Messages stored as files in cloud drive
+    # Structure:
+    # /shared_folder/
+    #   flwr/{app_name}/
+    #     messages/
+    #       {future_id}.request
+    #       {future_id}.response
+    ```
+  </Step>
+
+  <Step title="No Encryption">
+    Relies on cloud storage security:
+
+    ```python
+    # utils.py:96-99
+    elif isinstance(syftbox_client, SyftP2PClient):
+        logger.info("📁 Running via syft_client (e.g. Google Drive sync)")
+        return syftbox_client, False, f"flwr/{app_name}"
+    ```
+  </Step>
+</Steps>
+
+### Features
+
+- **Cloud storage sync** - Works with Google Drive, OneDrive, Dropbox
+- **No local daemon** - No SyftBox Go client required
+- **Colab compatible** - Perfect for Jupyter notebooks
+- **Simple setup** - Just authenticate with cloud provider
+
+### Use Cases
+
+- Google Colab experiments
+- Prototyping and development
+- Educational demonstrations
+- Cross-platform testing
+
+## Auto-Detection
+
+### Overview
+
+When `transport=None`, Syft-Flwr automatically selects the appropriate transport:
+
+```python
+# bootstrap.py:119-126
+if transport is None:
+    if _is_colab():
+        transport = "p2p"
+        logger.info("Detected Colab environment, using 'p2p' transport")
+    else:
+        transport = "syftbox"
+        logger.info("Using default 'syftbox' transport")
+```
+
+### Colab Detection
+
+```python
+# bootstrap.py:15-22
+def _is_colab() -> bool:
+    """Check if running in Google Colab."""
+    try:
+        import google.colab  # noqa: F401
+        return True
+    except ImportError:
+        return False
+```
+
+## RPC Protocol
+
+### Interface
+
+Both transports implement the `SyftFlwrRpc` protocol:
+
+```python
+# rpc/protocol.py
+class SyftFlwrRpc(ABC):
+    """Protocol for syft-flwr RPC implementations.
+    
+    This abstraction allows syft-flwr to work with different
+    transport mechanisms for sending FL messages:
+    - syft_core: syft_rpc (using SyftBox Go Client) with futures database
+    - syft_client: P2P File-based RPC via Google Drive sync
+    """
+    
+    @abstractmethod
+    def send(
+        self,
+        to_email: str,
+        app_name: str,
+        endpoint: str,
+        body: bytes,
+        encrypt: bool = False,
+    ) -> str:
+        """Send a message to a recipient."""
+        ...
+    
+    @abstractmethod
+    def get_response(self, future_id: str) -> Optional[bytes]:
+        """Get response for a future ID."""
+        ...
+    
+    @abstractmethod
+    def delete_future(self, future_id: str) -> None:
+        """Delete a future after processing its response."""
+        ...
+```
+
+### Message Flow
+
+<Tabs>
+  <Tab title="SyftBox RPC">
+    1. **Send**: Write message to futures database with encryption
+    2. **Sync**: SyftBox Go client syncs to recipient
+    3. **Receive**: Recipient reads and decrypts message
+    4. **Reply**: Response written to futures database
+    5. **Sync back**: Response synced to sender
+    6. **Get response**: Sender retrieves and decrypts response
+  </Tab>
+
+  <Tab title="P2P File RPC">
+    1. **Send**: Write message file to cloud storage
+    2. **Sync**: Cloud provider syncs file
+    3. **Receive**: Recipient reads message file
+    4. **Reply**: Response written as separate file
+    5. **Sync back**: Cloud provider syncs response
+    6. **Get response**: Sender reads response file
+  </Tab>
+</Tabs>
+
+## Encryption Configuration
+
+### Enabling/Disabling Encryption
+
+```bash
+# Enable encryption (default)
+export SYFT_FLWR_ENCRYPTION_ENABLED=true
+
+# Disable encryption (development only)
+export SYFT_FLWR_ENCRYPTION_ENABLED=false
+```
+
+### Encryption Bootstrap
+
+For SyftBox transport, encryption keys are automatically generated:
+
+```python
+# run_simulation.py:68-130
+def _bootstrap_encryption_keys(
+    do_clients: list[RDSClient], ds_client: RDSClient
+) -> None:
+    """Bootstrap the encryption keys for all clients if encryption is enabled."""
+    encryption_enabled = (
+        os.environ.get(SYFT_FLWR_ENCRYPTION_ENABLED, "true").lower() != "false"
+    )
+    
+    if not encryption_enabled:
+        logger.warning("⚠️ Encryption disabled - skipping key bootstrap")
+        return
+    
+    logger.info("🔐 Bootstrapping encryption keys for all participants...")
+    
+    # Bootstrap server
+    server_client = ds_client._syftbox_client
+    ensure_bootstrap(server_client)
+    
+    # Bootstrap each client
+    for do_client in do_clients:
+        client = do_client._syftbox_client
+        ensure_bootstrap(client)
+    
+    # Verify all DID documents are accessible
+    logger.info("🔐 All participants bootstrapped for E2E encryption ✅✅✅")
+```
+
+### DID Documents
+
+Decentralized Identifiers enable secure key exchange:
+
+```python
+# Each participant has:
+# - Private key: ~/.syftbox/{email}_private_key.pem
+# - DID document: ~/datasites/{email}/did.json
+#
+# DID document contains public key for encryption
+```
+
+## Transport Comparison
+
+| Feature | SyftBox | P2P |
+|---------|---------|-----|
+| **Encryption** | ✅ End-to-end | ❌ Relies on cloud |
+| **Setup Complexity** | Medium | Low |
+| **Dependencies** | SyftBox Go client | Cloud storage account |
+| **Performance** | Fast (local sync) | Depends on cloud speed |
+| **Colab Support** | ❌ No | ✅ Yes |
+| **Production Ready** | ✅ Yes | ⚠️ For testing only |
+| **Offline Support** | ✅ Partial | ❌ No |
+| **Key Management** | Automatic (X3DH) | N/A |
+
+## Client Setup Examples
+
+### SyftBox Client
+
+```python
+from syft_flwr.utils import setup_client
+
+# Automatically detects transport from pyproject.toml
+client, encryption_enabled, app_path = setup_client(
+    app_name="my-fl-app",
+    project_dir="./my-project"
+)
+
+# For SyftBox transport:
+# - client: syft_core.Client instance
+# - encryption_enabled: True (default)
+# - app_path: "flwr/my-fl-app"
+```
+
+### P2P Client
+
+```python
+# Same API, different behavior based on transport config
+client, encryption_enabled, app_path = setup_client(
+    app_name="my-fl-app",
+    project_dir="./my-project"
+)
+
+# For P2P transport:
+# - client: SyftP2PClient instance
+# - encryption_enabled: False
+# - app_path: "flwr/my-fl-app"
+```
+
+## Switching Transports
+
+To switch between transports, re-bootstrap your project:
+
+```bash
+# Originally bootstrapped with SyftBox
+syft_flwr bootstrap ./my-project -a server@example.com -d client@example.com
+
+# To switch to P2P:
+rm ./my-project/main.py  # Remove generated file
+syft_flwr bootstrap ./my-project \
+  -a server@example.com \
+  -d client@example.com \
+  --transport p2p  # Explicitly set transport
+
+# pyproject.toml now has:
+# [tool.syft_flwr]
+# transport = "p2p"
+```
+
+<Warning>
+Switching transports requires re-bootstrapping. Existing encryption keys are not compatible between transports.
+</Warning>
+
+## Troubleshooting
+
+### "Unknown client type" Error
+
+```python
+# rpc/factory.py:41-42
+else:
+    raise TypeError(f"Unknown client type: {type(native_client)}")
+```
+
+This means the client type doesn't match either transport. Check:
+- `pyproject.toml` has correct transport setting
+- Client initialization succeeded
+- No conflicting environment variables
+
+### Encryption Warnings
+
+```
+⚠️ Encryption disabled - skipping client key bootstrap
+⚠️ End-to-end encryption is DISABLED for FL messages
+```
+
+This is expected for:
+- P2P transport (no encryption supported)
+- `SYFT_FLWR_ENCRYPTION_ENABLED=false`
+
+### SyftBox Not Found
+
+If using SyftBox transport:
+
+```bash
+# Ensure SyftBox is installed
+which syftbox
+
+# Check SyftBox is running
+syftbox status
+```
+
+### Cloud Sync Issues (P2P)
+
+For P2P transport:
+
+```bash
+# Verify cloud storage is mounted
+ls ~/Google\ Drive/
+ls ~/OneDrive/
+
+# Check sync status
+# (varies by provider)
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Bootstrap Projects" icon="rocket" href="/guides/bootstrap-projects">
+    Set up your first project
+  </Card>
+  <Card title="Multi-Client Setup" icon="users" href="/guides/multi-client-setup">
+    Deploy with chosen transport
+  </Card>
+</CardGroup>

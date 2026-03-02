@@ -1,0 +1,465 @@
+---
+title: Running Federated Learning in Google Colab
+description: Tutorial for running federated learning in Google Colab with Google Drive sync
+---
+
+This tutorial shows you how to run federated learning (FL) across multiple Google Colab notebooks using Google Drive for communication—no servers, no local setup required.
+
+## Why Google Colab?
+
+- **Zero Setup**: No installation or configuration needed
+- **Free GPU Access**: Train models faster with free GPU runtime
+- **Easy Collaboration**: Share notebooks with team members
+- **Cloud Storage**: Use Google Drive for model parameter exchange
+
+## Architecture Overview
+
+In this setup:
+- Each data owner runs a Colab notebook as an FL client
+- The data scientist runs a Colab notebook as the FL server
+- Google Drive syncs model parameters between participants
+- No direct network connections required
+
+```
+Data Owner 1 (Colab) ←→ Google Drive ←→ Data Scientist (Colab)
+Data Owner 2 (Colab) ←→ Google Drive ←→ Data Scientist (Colab)
+```
+
+<Steps>
+
+### Prerequisites
+
+Before starting, ensure you have:
+- A Google account
+- Access to Google Colab (https://colab.research.google.com/)
+- A Google Drive account
+
+### Upload the Notebook
+
+1. Go to https://colab.research.google.com/
+2. Click `File` → `Upload Notebook`
+3. Create a new notebook or upload an existing one
+
+### Install Syft-Flwr
+
+In the first cell of your notebook, install syft-flwr:
+
+```python
+!uv pip install -q syft-flwr
+```
+
+<Note>
+  We use `uv pip` for faster installation in Colab environments. Regular `pip install syft-flwr` also works.
+</Note>
+
+### Initialize the Data Scientist Client
+
+The data scientist logs in and initializes their syft_client:
+
+```python
+import syft_client as sc
+import syft_flwr
+
+print(f"syft_client version: {sc.__version__}")
+print(f"syft_flwr version: {syft_flwr.__version__}")
+
+# Login as data scientist
+ds_email = input("Enter the Data Scientist's email: ")
+ds_client = sc.login_ds(email=ds_email)
+```
+
+This creates a SyftBox directory synced with Google Drive at:
+```
+/content/SyftBox_{your_email}/
+```
+
+### Add Data Owner Peers
+
+Add the data owners who will participate in FL:
+
+```python
+# Add first data owner
+do1_email = input("Enter the First Data Owner's email: ")
+ds_client.add_peer(do1_email)
+
+# Add second data owner
+do2_email = input("Enter the Second Data Owner's email: ")
+ds_client.add_peer(do2_email)
+
+# Verify peers
+ds_client.peers
+```
+
+<Tip>
+  You can add as many data owners as needed. Each will run their own Colab notebook as an FL client.
+</Tip>
+
+### Explore Available Datasets
+
+Before training, explore what datasets are available from each data owner:
+
+```python
+# Get DO1's datasets
+do1_datasets = ds_client.datasets.get_all(datasite=do1_email)
+print(f"DO1 has {len(do1_datasets)} dataset(s)")
+
+# Inspect the first dataset
+if do1_datasets:
+    do1_datasets[0].describe()
+    print(f"Mock data URL: {do1_datasets[0].mock_url}")
+
+# Get DO2's datasets  
+do2_datasets = ds_client.datasets.get_all(datasite=do2_email)
+print(f"DO2 has {len(do2_datasets)} dataset(s)")
+
+if do2_datasets:
+    do2_datasets[0].describe()
+    print(f"Mock data URL: {do2_datasets[0].mock_url}")
+```
+
+<Note>
+  You can access mock (synthetic) data for development and testing, but not the private data—that stays on the data owner's machine.
+</Note>
+
+### Download the FL Project
+
+Clone or download your FL project code:
+
+```python
+from pathlib import Path
+
+# Download from GitHub
+!mkdir -p /content/fl-diabetes-prediction
+!curl -sL https://github.com/khoaguin/fl-diabetes-prediction/archive/refs/heads/main.tar.gz | tar -xz --strip-components=1 -C /content/fl-diabetes-prediction
+
+SYFT_FLWR_PROJECT_PATH = Path("/content/fl-diabetes-prediction")
+print(f"Project downloaded to: {SYFT_FLWR_PROJECT_PATH}")
+```
+
+Alternatively, upload your project files directly to Colab.
+
+### Bootstrap the Project
+
+Configure the project with participant information:
+
+```python
+import syft_flwr
+
+# Remove existing main.py if present
+!rm -rf {SYFT_FLWR_PROJECT_PATH / "main.py"}
+
+# Bootstrap the project
+do_emails = [peer.email for peer in ds_client.peers]
+
+syft_flwr.bootstrap(
+    SYFT_FLWR_PROJECT_PATH,
+    aggregator=ds_email,
+    datasites=do_emails,
+    transport="p2p"  # Use P2P transport for Google Drive
+)
+
+print("✅ Bootstrapped project successfully")
+```
+
+<Tip>
+  The `transport="p2p"` parameter tells Syft-Flwr to use Google Drive for communication instead of local SyftBox.
+</Tip>
+
+This updates `pyproject.toml` with:
+
+```toml
+[tool.syft_flwr]
+app_name = "ds@example.com_fl-diabetes-prediction_1234567890"
+datasites = ["do1@example.com", "do2@example.com"]
+aggregator = "ds@example.com"
+transport = "p2p"
+```
+
+### Submit Jobs to Data Owners
+
+Send the FL project to data owners for approval:
+
+```python
+# Clean up before submitting
+!rm -rf {SYFT_FLWR_PROJECT_PATH / "fl_diabetes_prediction" / "__pycache__"}
+
+job_name = "fl-diabetes-training"
+
+# Submit to first data owner
+ds_client.submit_python_job(
+    user=do1_email,
+    code_path=str(SYFT_FLWR_PROJECT_PATH),
+    job_name=job_name,
+)
+print(f"✅ Submitted job to {do1_email}")
+
+# Submit to second data owner
+ds_client.submit_python_job(
+    user=do2_email,
+    code_path=str(SYFT_FLWR_PROJECT_PATH),
+    job_name=job_name,
+)
+print(f"✅ Submitted job to {do2_email}")
+
+# Check job status
+ds_client.jobs
+```
+
+Data owners will receive the job request and can review the code before approving.
+
+### Install FL Dependencies
+
+While waiting for approvals, install the required packages:
+
+```python
+!uv pip install \
+    "flwr-datasets>=0.5.0" \
+    "imblearn>=0.0" \
+    "loguru>=0.7.3" \
+    "pandas>=2.3.0" \
+    "scikit-learn==1.6.1" \
+    "torch>=2.8.0" \
+    "ray==2.31.0"
+```
+
+### Run the FL Server
+
+Once data owners approve the jobs, start the FL server:
+
+```python
+import os
+
+# Verify files exist
+assert SYFT_FLWR_PROJECT_PATH.exists(), "Project path does not exist"
+assert (SYFT_FLWR_PROJECT_PATH / "main.py").exists(), "main.py not found"
+
+# Set environment variables
+ds_email = ds_client.email
+syftbox_folder = f"/content/SyftBox_{ds_email}"
+
+# Run the FL server
+!SYFTBOX_EMAIL="{ds_email}" SYFTBOX_FOLDER="{syftbox_folder}" \
+    uv run {str(SYFT_FLWR_PROJECT_PATH / "main.py")}
+```
+
+The server will:
+1. Wait for clients to connect
+2. Distribute the initial model
+3. Aggregate model updates from clients
+4. Save checkpoints after each round
+
+<Note>
+  The training happens asynchronously through Google Drive. Clients and server don't need to run simultaneously—they communicate by reading/writing files to Drive.
+</Note>
+
+### Monitor Training Progress
+
+Check the training logs in real-time:
+
+```python
+# View current jobs
+ds_client.jobs
+
+# Monitor output
+print("Training in progress...")
+print("Check the cell output above for live logs")
+```
+
+You should see output like:
+
+```
+🚀 SERVER FUNCTION STARTED
+⚙️ CONFIGURING STRATEGY
+   Strategy: FedAvgWithModelSaving
+   Min available clients: 2
+   Number of rounds: 3
+
+📊 AGGREGATING METRICS
+   Number of clients: 2
+✅ AGGREGATION COMPLETE - Average Accuracy: 0.7543
+
+🔐 Checkpoint saved to: weights/parameters_round_1.safetensors
+```
+
+### Access Results
+
+After training completes, access the model checkpoints:
+
+```python
+import os
+
+# List saved model weights
+weights_dir = Path(syftbox_folder) / "rds" / "weights"
+if weights_dir.exists():
+    weights_files = list(weights_dir.glob("*.safetensors"))
+    print(f"Found {len(weights_files)} model checkpoints:")
+    for f in sorted(weights_files):
+        print(f"  - {f.name}")
+else:
+    print("No weights directory found yet")
+```
+
+Load and use the trained model:
+
+```python
+from safetensors.numpy import load_file
+import torch
+
+# Load the final model
+final_weights = load_file(str(weights_dir / "parameters_round_3.safetensors"))
+
+# Load into your model
+from fl_diabetes_prediction.task import Net
+
+model = Net()
+# Apply the weights...
+```
+
+### Clean Up
+
+When done, clean up the SyftBox directory:
+
+```python
+ds_client.delete_syftbox()
+print("✅ Cleaned up SyftBox directory")
+```
+
+</Steps>
+
+## Data Owner Setup
+
+Data owners also run Colab notebooks. Here's their workflow:
+
+<Steps>
+
+### Install and Login
+
+```python
+!uv pip install -q syft-flwr
+
+import syft_client as sc
+
+# Login as data owner
+do_email = input("Enter your email: ")
+do_client = sc.login_do(email=do_email)
+```
+
+### Upload Private Dataset
+
+```python
+# Upload your private dataset
+from google.colab import files
+
+uploaded = files.upload()  # Upload train.csv and test.csv
+
+# Register with syft_client
+do_client.datasets.create(
+    name="pima-indians-diabetes-database",
+    private_path="./private_data",
+    mock_path="./mock_data"
+)
+```
+
+### Review and Approve Jobs
+
+```python
+# View pending jobs
+do_client.jobs
+
+# Review a specific job
+job = do_client.jobs[0]
+print(f"Job from: {job.requester}")
+print(f"Code: {job.code_preview}")
+
+# Approve the job
+do_client.job.approve(job)
+```
+
+### Run the Client Code
+
+```python
+# The client code runs automatically after approval
+# Or manually trigger it:
+do_client.run_private(job, blocking=True)
+```
+
+</Steps>
+
+## Communication Flow
+
+Here's how parameters flow through Google Drive:
+
+1. **Server → Drive**: Server writes initial model to `flwr/{app_name}/server/messages/`
+2. **Drive → Clients**: Clients read model from their synced Drive folder
+3. **Clients → Drive**: Clients write local updates to `flwr/{app_name}/client_{id}/messages/`
+4. **Drive → Server**: Server reads updates and aggregates
+5. **Repeat**: Process continues for configured number of rounds
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use Mock Data First" icon="flask">
+    Test your FL project with mock data before submitting to data owners with private data.
+  </Card>
+  
+  <Card title="Monitor Drive Quota" icon="database">
+    Large models can consume Drive storage quickly. Clean up old runs regularly.
+  </Card>
+  
+  <Card title="Set Timeouts" icon="clock">
+    Use reasonable message timeouts since Drive sync isn't instant.
+  </Card>
+  
+  <Card title="Save Checkpoints" icon="floppy-disk">
+    Always use `FedAvgWithModelSaving` to checkpoint progress in case of interruptions.
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Drive sync is slow">
+    Google Drive sync can take 30-60 seconds. Increase the timeout:
+    ```python
+    os.environ["SYFT_FLWR_MSG_TIMEOUT"] = "120"  # 2 minutes
+    ```
+  </Accordion>
+  
+  <Accordion title="'syft_client' not found error">
+    Make sure you installed syft-flwr correctly:
+    ```python
+    !uv pip install --upgrade syft-flwr
+    ```
+  </Accordion>
+  
+  <Accordion title="Permission denied on Drive">
+    Ensure all participants have granted Drive access to the syft_client app.
+  </Accordion>
+  
+  <Accordion title="Clients not connecting">
+    Verify:
+    - All participants used the same `app_name` from bootstrap
+    - Transport is set to `"p2p"` in all notebooks
+    - Data owners have approved their jobs
+  </Accordion>
+</AccordionGroup>
+
+## Advantages of Colab-Based FL
+
+- **No Infrastructure**: No need to set up servers or networking
+- **Accessible**: Anyone with a Google account can participate
+- **Reproducible**: Notebooks document the entire FL process
+- **Scalable**: Add more data owners by sharing additional notebooks
+
+## Limitations
+
+- **Sync Latency**: Google Drive sync adds 30-60s latency between rounds
+- **Storage Limits**: Free Drive accounts have 15GB storage limits
+- **Session Timeouts**: Colab sessions timeout after 12 hours of inactivity
+- **No Encryption**: P2P transport doesn't include end-to-end encryption
+
+## What's Next?
+
+- Learn about [setting up local SyftBox](/tutorials/syftbox-setup) for lower latency
+- Implement [custom aggregation strategies](/tutorials/custom-strategies)
+- Try the [complete Colab example](https://github.com/OpenMined/syft-flwr/tree/main/notebooks/fl-diabetes-prediction/distributed-gdrive)

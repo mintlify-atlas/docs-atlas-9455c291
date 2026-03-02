@@ -1,0 +1,471 @@
+---
+title: "Local Simulation"
+description: "Run complete federated learning workflows on your local machine for development and testing"
+---
+
+Local simulation lets you run entire federated learning workflows on a single machine, simulating multiple data owners and a data scientist. This is perfect for development, testing, and learning how federated systems work before deploying to real distributed environments.
+
+## Overview
+
+Local simulation provides two execution modes:
+
+1. **Flower Simulation Engine**: Run federated learning with the `flwr run` command
+2. **Jupyter Notebooks**: Interactive notebooks simulating multiple parties in a local SyftBox network
+
+Both modes create isolated environments for each participant (data owners and data scientist) on your local machine.
+
+## Benefits of Local Simulation
+
+- **Rapid Development**: Test changes instantly without network delays
+- **Easy Debugging**: All logs and data in one place
+- **Cost Effective**: No need for multiple machines or cloud resources
+- **Learning Tool**: Understand federated workflows by switching between party roles
+- **Reproducible**: Consistent environment for testing and validation
+
+## Getting Started
+
+### Prerequisites
+
+- Python >= 3.12
+- [uv](https://docs.astral.sh/uv/) package manager (or pip)
+- Jupyter (for notebook-based simulation)
+
+### Choose Your Example
+
+All Syft-Flwr examples support local simulation:
+
+<CardGroup cols={3}>
+  <Card title="Diabetes Prediction" icon="brain" href="/examples/diabetes-prediction">
+    Federated learning for binary classification
+  </Card>
+  
+  <Card title="Federated Analytics" icon="chart-bar" href="/examples/federated-analytics">
+    Privacy-preserving data analysis
+  </Card>
+  
+  <Card title="FedRAG" icon="magnifying-glass" href="/examples/fedrag">
+    Federated document retrieval for LLMs
+  </Card>
+</CardGroup>
+
+## Method 1: Flower Simulation Engine
+
+The fastest way to run federated learning locally.
+
+### Setup
+
+1. Clone an example project:
+
+```bash
+git clone https://github.com/OpenMined/syft-flwr.git _tmp \
+    && mv _tmp/notebooks/fl-diabetes-prediction . \
+    && rm -rf _tmp && cd fl-diabetes-prediction
+```
+
+2. Install dependencies:
+
+```bash
+uv sync
+```
+
+3. Run the simulation:
+
+```bash
+flwr run .
+```
+
+### What Happens
+
+The `flwr run` command:
+
+1. Reads configuration from `pyproject.toml`
+2. Starts a virtual server (aggregator)
+3. Spawns multiple virtual clients (supernodes) in separate processes
+4. Runs the complete federated learning workflow
+5. Saves results to the local filesystem
+
+### Configuration
+
+Edit `pyproject.toml` to control the simulation:
+
+```toml
+[tool.flwr.app.config]
+num-server-rounds = 2        # Number of FL rounds
+partition-id = 0             # Client partition ID
+num-partitions = 1           # Total partitions per client
+
+[tool.flwr.federations.local-simulation.options]
+num-supernodes = 2          # Number of simulated clients
+```
+
+**Key Parameters**:
+
+- `num-supernodes`: How many data owners to simulate (default: 2)
+- `num-server-rounds`: How many federated learning rounds to run (default: 2)
+- `partition-id` / `num-partitions`: Data partitioning configuration
+
+### Example Output
+
+```
+🚀 Starting Flower simulation...
+
+🟢 Round 1/2
+   Client 0: Training on 384 samples...
+   Client 1: Training on 384 samples...
+   Aggregating 2 client updates...
+   Average accuracy: 0.7234
+
+🟢 Round 2/2
+   Client 0: Training on 384 samples...
+   Client 1: Training on 384 samples...
+   Aggregating 2 client updates...
+   Average accuracy: 0.7891
+
+✅ Simulation complete!
+   Final model saved to: ./weights/
+```
+
+## Method 2: Jupyter Notebooks
+
+Interactive simulation with full visibility into each party's perspective.
+
+### Setup
+
+1. Clone an example project (same as above)
+
+2. Install dependencies:
+
+```bash
+uv sync
+```
+
+3. Start Jupyter:
+
+```bash
+jupyter notebook
+```
+
+### Workflow
+
+Each example includes notebooks in the `local/` directory:
+
+```
+local/
+├── do1.ipynb    # Data Owner 1
+├── do2.ipynb    # Data Owner 2
+└── ds.ipynb     # Data Scientist
+```
+
+### Step-by-Step Execution
+
+#### Step 1: Data Owner 1 (`local/do1.ipynb`)
+
+1. Open `local/do1.ipynb`
+2. Run cells to:
+   - Set up local SyftBox datasite
+   - Load partition 0 of the dataset
+   - Initialize the Flower client
+   - Wait for jobs from data scientist
+
+```python
+# Example from do1.ipynb
+import syft_client as sc
+
+# Create local datasite
+do1_email = "do1@local.test"
+do1_client = sc.create_local_client(email=do1_email)
+
+# Register dataset (partition 0)
+do1_client.create_dataset(
+    name="diabetes-data",
+    private_path="./data/partition_0/",
+    summary="Data Owner 1 - Partition 0"
+)
+```
+
+#### Step 2: Data Owner 2 (`local/do2.ipynb`)
+
+1. Open `local/do2.ipynb` in a new browser tab
+2. Run cells to:
+   - Set up second local datasite
+   - Load partition 1 of the dataset
+   - Initialize second Flower client
+   - Wait for jobs
+
+```python
+# Example from do2.ipynb
+do2_email = "do2@local.test"
+do2_client = sc.create_local_client(email=do2_email)
+
+# Register dataset (partition 1)
+do2_client.create_dataset(
+    name="diabetes-data",
+    private_path="./data/partition_1/",
+    summary="Data Owner 2 - Partition 1"
+)
+```
+
+#### Step 3: Data Scientist (`local/ds.ipynb`)
+
+1. Open `local/ds.ipynb` in another browser tab
+2. Run cells to:
+   - Connect to local SyftBox network
+   - Discover data owners
+   - Submit federated learning jobs
+   - Run aggregation server
+   - Collect results
+
+```python
+# Example from ds.ipynb
+ds_email = "ds@local.test"
+ds_client = sc.create_local_client(email=ds_email)
+
+# Add data owners as peers
+ds_client.add_peer("do1@local.test")
+ds_client.add_peer("do2@local.test")
+
+# Submit FL job to both data owners
+for do_email in ["do1@local.test", "do2@local.test"]:
+    ds_client.submit_python_job(
+        user=do_email,
+        code_path="./fl_diabetes_prediction/",
+        job_name="diabetes-fl-training"
+    )
+```
+
+#### Step 4: Approve Jobs (Back to Data Owners)
+
+Switch back to `do1.ipynb` and `do2.ipynb`:
+
+```python
+# In both do1.ipynb and do2.ipynb
+print(do1_client.jobs)  # View pending jobs
+do1_client.jobs[0].approve()  # Approve the job
+do1_client.process_approved_jobs()  # Execute training
+```
+
+#### Step 5: Run Aggregation (Back to Data Scientist)
+
+Switch back to `ds.ipynb`:
+
+```python
+# Start aggregation server
+import syft_flwr
+syft_flwr.run_aggregator(
+    project_path="./fl_diabetes_prediction/",
+    num_rounds=2
+)
+
+# View final results
+print(ds_client.jobs)  # Check job status
+```
+
+### Switching Between Notebooks
+
+The notebooks include clear instructions about when to switch:
+
+```markdown
+⚠️ **SWITCH TO DO1 NOTEBOOK**
+
+Before continuing, open `local/do1.ipynb` and run through Step 3.
+Then return here to continue.
+```
+
+This simulates the asynchronous nature of federated learning where different parties act independently.
+
+## Local SyftBox Network
+
+Both simulation methods create a local SyftBox network:
+
+### Directory Structure
+
+Each participant gets their own datasite:
+
+```
+~/.syftbox/
+├── do1@local.test/
+│   ├── datasites/
+│   ├── datasets/
+│   └── jobs/
+├── do2@local.test/
+│   ├── datasites/
+│   ├── datasets/
+│   └── jobs/
+└── ds@local.test/
+    ├── peers/
+    ├── jobs/
+    └── results/
+```
+
+### Communication
+
+Local communication happens through:
+
+1. **File System**: Datasites write job requests and results to local directories
+2. **Process Signals**: Flower simulation uses inter-process communication
+3. **Network Loopback**: SyftBox client can use `localhost` for testing
+
+## Comparing Simulation Methods
+
+| Feature | Flower Simulation | Jupyter Notebooks |
+|---------|-------------------|-------------------|
+| **Speed** | Faster (automated) | Slower (manual steps) |
+| **Visibility** | Server logs only | Full party visibility |
+| **Interactivity** | Command-line | Rich notebook output |
+| **Learning** | Quick testing | Deep understanding |
+| **Debugging** | Standard logs | Interactive debugging |
+| **Customization** | Config file | Live code changes |
+
+## Common Use Cases
+
+### Development and Testing
+
+```bash
+# Test changes quickly
+flwr run .  # Run full simulation
+
+# Make code changes in fl_diabetes_prediction/
+
+flwr run .  # Test again immediately
+```
+
+### Algorithm Experimentation
+
+Modify the aggregation strategy in `server_app.py`:
+
+```python
+# Try different aggregation strategies
+from flwr.server.strategy import FedAvg, FedProx, FedAdam
+
+strategy = FedProx(  # Instead of FedAvg
+    proximal_mu=0.1,
+    fraction_fit=1.0,
+    min_available_clients=2,
+)
+```
+
+Run locally to see the impact:
+
+```bash
+flwr run .
+```
+
+### Data Partitioning Experiments
+
+Test different data distributions:
+
+```python
+# In task.py - try non-IID partitioning
+from flwr_datasets.partitioner import DirichletPartitioner
+
+partitioner = DirichletPartitioner(
+    num_partitions=2,
+    partition_by="y",  # Partition by label
+    alpha=0.5          # Controls non-IID-ness
+)
+```
+
+### Integration Testing
+
+Validate the complete workflow before distributed deployment:
+
+1. Run local simulation
+2. Verify outputs and metrics
+3. Test edge cases (client failures, unbalanced data)
+4. Confirm privacy properties (no data leakage)
+
+## Scaling Up
+
+Simulate larger federations:
+
+```toml
+[tool.flwr.federations.local-simulation.options]
+num-supernodes = 10  # Simulate 10 data owners
+```
+
+<Warning>
+  Local simulation is limited by your machine's resources. Simulating many clients (>10) may require significant CPU and memory.
+</Warning>
+
+### Resource Configuration
+
+Allocate resources per client:
+
+```toml
+[tool.flwr.federations.local-simulation.options]
+backend.client-resources.num-cpus = 2
+backend.client-resources.num-gpus = 0.1
+```
+
+## Transitioning to Distributed
+
+Once your local simulation works, deploy to real distributed environments:
+
+<CardGroup cols={2}>
+  <Card title="Google Colab" icon="cloud" href="/examples/google-drive">
+    Zero-setup distributed deployment using Google Colab notebooks.
+  </Card>
+  
+  <Card title="SyftBox Network" icon="network-wired" href="/examples/syftbox">
+    Production deployment across real distributed nodes.
+  </Card>
+</CardGroup>
+
+The code remains the same—only the execution environment changes!
+
+## Troubleshooting
+
+### Issue: Port Already in Use
+
+```
+Error: Address already in use: 127.0.0.1:8080
+```
+
+**Solution**: Kill existing Flower processes:
+
+```bash
+pkill -f "flwr"
+```
+
+### Issue: Out of Memory
+
+**Solution**: Reduce number of supernodes or batch size:
+
+```toml
+num-supernodes = 2  # Reduce from 10
+```
+
+### Issue: Data Not Found
+
+**Solution**: Ensure datasets are downloaded:
+
+```bash
+# For FedRAG example
+./data/prepare.sh
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Try Diabetes Prediction" icon="brain" href="/examples/diabetes-prediction">
+    Run your first federated learning simulation.
+  </Card>
+  
+  <Card title="Explore Federated Analytics" icon="chart-bar" href="/examples/federated-analytics">
+    Simulate privacy-preserving data analysis.
+  </Card>
+  
+  <Card title="Deploy to Google Colab" icon="cloud" href="/examples/google-drive">
+    Move from local to distributed with zero setup.
+  </Card>
+  
+  <Card title="SyftBox Deployment" icon="network-wired" href="/examples/syftbox">
+    Deploy to production distributed network.
+  </Card>
+</CardGroup>
+
+## Resources
+
+- [Flower Simulation Documentation](https://flower.ai/docs/framework/how-to-run-simulations.html)
+- [Jupyter Notebook Guide](https://jupyter-notebook.readthedocs.io/)
+- [SyftBox Local Development](https://syftbox.net/docs/local-development)

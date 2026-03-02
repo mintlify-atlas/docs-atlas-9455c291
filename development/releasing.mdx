@@ -1,0 +1,350 @@
+---
+title: "Release Process"
+description: "How to release new versions of Syft-Flwr to PyPI"
+---
+
+Syft-Flwr uses a fully automated release process via GitHub Actions. This guide covers how to release new versions, test releases, and troubleshoot common issues.
+
+## Quick Release
+
+Releasing a new version is simple and fully automated:
+
+<Steps>
+  <Step title="Navigate to Actions">
+    Go to the GitHub repository → **Actions** tab
+  </Step>
+  
+  <Step title="Select Release workflow">
+    Click on **Release** workflow from the list
+  </Step>
+  
+  <Step title="Run workflow">
+    Click **"Run workflow"** button
+  </Step>
+  
+  <Step title="Configure release">
+    Select the following options:
+    
+    - **bump_type**: Choose `patch`, `minor`, or `major`
+    - **skip_publish**: Leave unchecked (false) for production release
+  </Step>
+  
+  <Step title="Execute">
+    Click **"Run workflow"** to start the release process
+  </Step>
+</Steps>
+
+The workflow will automatically handle everything from version bumping to PyPI publishing.
+
+## What the Workflow Does
+
+The release workflow performs the following steps automatically:
+
+<Steps>
+  <Step title="Setup Environment">
+    - Checks out the main branch
+    - Installs Python, uv, just, and all dependencies
+  </Step>
+  
+  <Step title="Version Bump">
+    Uses `just bump <type>` which:
+    
+    - Runs `cz bump` (commitizen) to update version numbers
+    - Creates a git commit and tag
+    - Updates main project's `uv.lock` file
+    - Updates notebook `pyproject.toml` files (locks updated later)
+    - Amends everything into a single atomic commit
+  </Step>
+  
+  <Step title="Testing & Building">
+    - Runs full test suite (`just test`)
+    - Builds the package (`just build`)
+    - Tests the built package can be imported
+    - Verifies the version number is correct
+  </Step>
+  
+  <Step title="Publishing">
+    - Pushes the commit and tags to main branch
+    - Uploads the package to PyPI (unless `skip_publish=true`)
+    - Creates a GitHub release with auto-generated changelog
+  </Step>
+  
+  <Step title="Post-publish Updates">
+    - Waits 30 seconds for PyPI to index the new version
+    - Updates notebook lock files with the published version
+    - Commits and pushes the lock file updates
+  </Step>
+</Steps>
+
+## Testing a Release
+
+Before releasing to production, you can test the release process without making permanent changes:
+
+<Steps>
+  <Step title="Run workflow in test mode">
+    When running the Release workflow, set **skip_publish** to `true` (check the box)
+  </Step>
+  
+  <Step title="What gets tested">
+    The workflow will:
+    
+    - ✅ Test version bumping and dependency updates
+    - ✅ Build and validate the package
+    - ❌ Skip git commits/pushes (no permanent changes)
+    - ❌ Skip PyPI upload
+    - ❌ Skip GitHub release creation
+    - ❌ Skip notebook lock file updates
+  </Step>
+  
+  <Step title="Review logs">
+    Review the workflow logs to ensure everything works correctly
+  </Step>
+  
+  <Step title="No cleanup needed">
+    No permanent changes are made, so no cleanup is required
+  </Step>
+</Steps>
+
+## Manual Release Steps
+
+If you need to release manually (for example, if the GitHub Actions workflow is unavailable):
+
+<Steps>
+  <Step title="Bump version">
+    ```bash
+    just bump patch  # or minor/major
+    ```
+    
+    This updates version numbers, creates a commit and tag.
+  </Step>
+  
+  <Step title="Run tests">
+    ```bash
+    just test
+    ```
+    
+    Ensure all tests pass before releasing.
+  </Step>
+  
+  <Step title="Build package">
+    ```bash
+    just build
+    ```
+    
+    Creates distribution files in the `dist/` directory.
+  </Step>
+  
+  <Step title="Push to GitHub">
+    ```bash
+    git push origin main --tags
+    ```
+    
+    Pushes the version commit and tag to the main branch.
+  </Step>
+  
+  <Step title="Upload to PyPI">
+    ```bash
+    uvx twine upload dist/* --username __token__ --password <token>
+    ```
+    
+    Replace `<token>` with your PyPI API token.
+  </Step>
+  
+  <Step title="Update notebook locks">
+    After PyPI publishes the package (wait a few minutes):
+    
+    ```bash
+    just update-notebook-locks
+    git add notebooks/*/uv.lock
+    git commit -m "chore: update notebook locks"
+    git push origin main
+    ```
+  </Step>
+</Steps>
+
+## Version Bumping
+
+The project uses [Commitizen](https://commitizen-tools.github.io/commitizen/) for version management.
+
+### Available Commands
+
+<CodeGroup>
+```bash Bump patch version (0.3.1 → 0.3.2)
+just bump patch
+```
+
+```bash Bump minor version (0.3.1 → 0.4.0)
+just bump minor
+```
+
+```bash Bump major version (0.3.1 → 1.0.0)
+just bump major
+```
+
+```bash Dry run (preview changes)
+just bump-dry patch
+```
+
+```bash Show current version
+just show-version
+```
+</CodeGroup>
+
+### What Gets Updated
+
+Commitizen automatically updates version numbers in multiple files:
+
+1. **`pyproject.toml`**: Main project version
+2. **`src/syft_flwr/__init__.py`**: Package `__version__` variable
+3. **`notebooks/*/pyproject.toml`**: Notebook dependency versions
+
+This is configured in `pyproject.toml`:
+
+```toml pyproject.toml
+[tool.commitizen]
+name = "cz_conventional_commits"
+version_provider = "pep621"
+tag_format = "v$version"
+update_changelog_on_bump = false
+version_files = [
+    "pyproject.toml:^version\\s*=\\s*\"(?P<version>.*)\"$",
+    "src/syft_flwr/__init__.py:^__version__\\s*=\\s*\"(?P<version>.*)\"$",
+    "notebooks/*/pyproject.toml:\"syft-flwr>=(?P<version>[^\"]+)\"",
+]
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Notebook lock updates fail">
+    **Problem**: Notebook lock file updates fail after publishing.
+    
+    **Solution**: The new version might not be available on PyPI yet. Wait a few minutes and run manually:
+    
+    ```bash
+    just update-notebook-locks
+    git add notebooks/*/uv.lock
+    git commit -m "chore: update notebook locks"
+    git push origin main
+    ```
+  </Accordion>
+  
+  <Accordion title="Tests fail during release">
+    **Problem**: Release workflow fails because tests don't pass.
+    
+    **Solution**: 
+    - Fix the failing tests before attempting release
+    - The workflow will abort if tests fail
+    - Never bypass failing tests in production releases
+  </Accordion>
+  
+  <Accordion title="PyPI upload fails">
+    **Problem**: Package upload to PyPI fails.
+    
+    **Possible causes**:
+    - `OM_PYPI_TOKEN` secret is not set or invalid in repository settings
+    - The version already exists on PyPI (versions are immutable)
+    - Network or PyPI service issues
+    
+    **Solution**:
+    - Verify the PyPI token is correctly configured
+    - Check if the version exists at https://pypi.org/project/syft-flwr/
+    - If version exists, bump to a higher version
+  </Accordion>
+  
+  <Accordion title="Version conflicts">
+    **Problem**: Version number already exists or conflicts.
+    
+    **Solution**: 
+    - PyPI versions are immutable and cannot be reused
+    - Bump to a higher version number
+    - Use `just show-version` to check current version
+    - Use `just bump-dry patch` to preview next version
+  </Accordion>
+  
+  <Accordion title="Git tag already exists">
+    **Problem**: Git tag for version already exists.
+    
+    **Solution**:
+    ```bash
+    # Delete local tag
+    git tag -d v0.5.0
+    
+    # Delete remote tag (use with caution)
+    git push origin :refs/tags/v0.5.0
+    
+    # Bump to next version
+    just bump patch
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Development Workflow
+
+The recommended workflow for development and releases:
+
+<Steps>
+  <Step title="Feature Development">
+    Develop features in feature branches:
+    
+    ```bash
+    git checkout -b feature/new-feature
+    # Make changes, commit, test
+    ```
+  </Step>
+  
+  <Step title="Merge to Main">
+    Create a pull request and merge to main when ready:
+    
+    ```bash
+    git checkout main
+    git pull origin main
+    git merge feature/new-feature
+    git push origin main
+    ```
+  </Step>
+  
+  <Step title="Run Release Workflow">
+    Trigger the release workflow from GitHub Actions to publish the new version
+  </Step>
+  
+  <Step title="Notebook Updates">
+    Notebook dependencies are automatically updated by the release workflow
+  </Step>
+</Steps>
+
+This ensures the main branch is always releasable and dependencies stay in sync.
+
+## Required Secrets
+
+The following GitHub repository secrets must be configured for automated releases:
+
+| Secret Name | Description |
+|-------------|-------------|
+| `OM_PYPI_TOKEN` | PyPI API token for uploading packages |
+
+### Setting Up PyPI Token
+
+<Steps>
+  <Step title="Create PyPI token">
+    1. Log in to [PyPI](https://pypi.org/)
+    2. Go to Account Settings → API tokens
+    3. Click "Add API token"
+    4. Set scope to "Entire account" or specific to "syft-flwr" project
+    5. Copy the token (starts with `pypi-`)
+  </Step>
+  
+  <Step title="Add to GitHub secrets">
+    1. Go to repository → Settings → Secrets and variables → Actions
+    2. Click "New repository secret"
+    3. Name: `OM_PYPI_TOKEN`
+    4. Value: Paste the PyPI token
+    5. Click "Add secret"
+  </Step>
+</Steps>
+
+## Next Steps
+
+- Understand the [Versioning](/development/versioning) strategy
+- Review [Testing](/development/testing) before releases
+- Learn about [Code Quality](/development/code-quality) checks

@@ -1,122 +1,149 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "Syft-Flwr",
+  "theme": "aspen",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#6366F1",
+    "light": "#818CF8",
+    "dark": "#4F46E5"
   },
-  "favicon": "/favicon.svg",
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/OpenMined/syft-flwr"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/OpenMined/syft-flwr"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Get Started",
             "pages": [
-              "index",
+              "introduction",
               "quickstart",
-              "development"
+              "installation"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Core Concepts",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "concepts/overview",
+              "concepts/architecture",
+              "concepts/file-based-communication",
+              "concepts/transport-layers",
+              "concepts/privacy-model"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Tutorials",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "tutorials/first-fl-project",
+              "tutorials/google-colab",
+              "tutorials/syftbox-setup",
+              "tutorials/custom-strategies"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Guides",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "guides/bootstrap-projects",
+              "guides/run-simulations",
+              "guides/transport-configuration",
+              "guides/offline-training",
+              "guides/multi-client-setup"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "Examples",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Example Projects",
             "pages": [
-              "api-reference/introduction"
+              "examples/overview",
+              "examples/diabetes-prediction",
+              "examples/federated-analytics",
+              "examples/fedrag"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Deployment Options",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "examples/local-simulation",
+              "examples/google-drive",
+              "examples/syftbox"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core API",
+            "pages": [
+              "api/bootstrap",
+              "api/run",
+              "api/configuration"
+            ]
+          },
+          {
+            "group": "CLI Commands",
+            "pages": [
+              "api/cli/overview",
+              "api/cli/bootstrap",
+              "api/cli/run",
+              "api/cli/version"
+            ]
+          },
+          {
+            "group": "Transport Layers",
+            "pages": [
+              "api/transport/overview",
+              "api/transport/syftbox",
+              "api/transport/p2p"
+            ]
+          },
+          {
+            "group": "Orchestration",
+            "pages": [
+              "api/orchestration/client",
+              "api/orchestration/server",
+              "api/orchestration/events",
+              "api/orchestration/rpc"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Development",
+        "groups": [
+          {
+            "group": "Contributing",
+            "pages": [
+              "development/overview",
+              "development/setup",
+              "development/testing",
+              "development/code-quality"
+            ]
+          },
+          {
+            "group": "Release Process",
+            "pages": [
+              "development/releasing",
+              "development/versioning"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }
