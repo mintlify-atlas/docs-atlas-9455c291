@@ -1,0 +1,161 @@
+{
+  "projectType": "framework",
+  "projectName": "Syft-Flwr",
+  "projectDescription": "Easy, file-based, offline capable federated learning framework built on Flower",
+  "theme": "aspen",
+  "primaryColor": "#6366F1",
+  "lightColor": "#818CF8",
+  "darkColor": "#4F46E5",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/overview",
+              "concepts/architecture",
+              "concepts/file-based-communication",
+              "concepts/transport-layers",
+              "concepts/privacy-model"
+            ]
+          },
+          {
+            "group": "Tutorials",
+            "pages": [
+              "tutorials/first-fl-project",
+              "tutorials/google-colab",
+              "tutorials/syftbox-setup",
+              "tutorials/custom-strategies"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/bootstrap-projects",
+              "guides/run-simulations",
+              "guides/transport-configuration",
+              "guides/offline-training",
+              "guides/multi-client-setup"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Examples",
+        "groups": [
+          {
+            "group": "Example Projects",
+            "pages": [
+              "examples/overview",
+              "examples/diabetes-prediction",
+              "examples/federated-analytics",
+              "examples/fedrag"
+            ]
+          },
+          {
+            "group": "Deployment Options",
+            "pages": [
+              "examples/local-simulation",
+              "examples/google-drive",
+              "examples/syftbox"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core API",
+            "pages": [
+              "api/bootstrap",
+              "api/run",
+              "api/configuration"
+            ]
+          },
+          {
+            "group": "CLI Commands",
+            "pages": [
+              "api/cli/overview",
+              "api/cli/bootstrap",
+              "api/cli/run",
+              "api/cli/version"
+            ]
+          },
+          {
+            "group": "Transport Layers",
+            "pages": [
+              "api/transport/overview",
+              "api/transport/syftbox",
+              "api/transport/p2p"
+            ]
+          },
+          {
+            "group": "Orchestration",
+            "pages": [
+              "api/orchestration/client",
+              "api/orchestration/server",
+              "api/orchestration/events",
+              "api/orchestration/rpc"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Development",
+        "groups": [
+          {
+            "group": "Contributing",
+            "pages": [
+              "development/overview",
+              "development/setup",
+              "development/testing",
+              "development/code-quality"
+            ]
+          },
+          {
+            "group": "Release Process",
+            "pages": [
+              "development/releasing",
+              "development/versioning"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "File-based communication (no servers required)",
+    "Multiple transport backends (SyftBox, Google Drive)",
+    "Offline-capable asynchronous training",
+    "Privacy-preserving (data never leaves source)",
+    "Built on Flower's robust FL framework",
+    "Easy setup with CLI tools",
+    "Supports custom strategies and configurations"
+  ],
+  "publicApiSurface": [
+    "bootstrap(project_dir, aggregator, datasites)",
+    "run(project_dir, mock_dataset_paths)",
+    "syftbox_run_flwr_client(flower_project_dir)",
+    "syftbox_run_flwr_server(flower_project_dir)",
+    "CLI: syft_flwr bootstrap",
+    "CLI: syft_flwr run",
+    "CLI: syft_flwr version",
+    "SyftCoreClient",
+    "SyftP2PClient",
+    "SyftRPC",
+    "P2PFileRPC",
+    "FlowerClient orchestration",
+    "FlowerServer orchestration"
+  ]
+}
